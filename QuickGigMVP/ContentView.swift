@@ -9,11 +9,21 @@ struct ContentView: View {
     var body: some View {
         Group {
             if appState.isLoggedIn {
-                MainMapView()
-            } else if showOnboarding {
-                OnboardingView {
-                    showOnboarding = false
+                if appState.requiresPhoneVerification {
+                    PhoneVerificationView()
+                } else {
+                    MainMapView()
                 }
+            } else if showOnboarding {
+                OnboardingView(
+                    onSkip: {
+                        showOnboarding = false
+                    },
+                    onSelectRole: { role in
+                        preferredRoleRawValue = role.rawValue
+                        showOnboarding = false
+                    }
+                )
             } else if let preferredRole {
                 LoginView(selectedRole: preferredRole) {
                     preferredRoleRawValue = ""

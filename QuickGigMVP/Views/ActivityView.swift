@@ -36,10 +36,10 @@ struct ActivityView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Планер змін")
                     .font(.headline)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                 Text("Прийнятих змін: \(acceptedShifts.count)")
-                    .foregroundStyle(.white.opacity(0.88))
-                Text("Прогноз доходу: $\(earnings)")
+                    .foregroundStyle(.secondary)
+                Text("Прогноз доходу: \(earnings) грн")
                     .font(.title3.bold())
                     .foregroundStyle(.green)
             }
@@ -49,22 +49,22 @@ struct ActivityView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Усі відгуки")
                     .font(.headline)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
 
                 if items.isEmpty {
                     Text("Ви ще не відгукувалися на зміни")
-                        .foregroundStyle(.white.opacity(0.75))
+                        .foregroundStyle(.secondary)
                 } else {
                     ForEach(items) { item in
                         if let shift = appState.shift(by: item.shiftId) {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(shift.title)
                                     .font(.headline)
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(.primary)
 
-                                Text("$\(shift.pay)/год • \(shift.startDate, style: .date)")
+                                Text("\(shift.pay) грн/год • \(shift.startDate, style: .date)")
                                     .font(.subheadline)
-                                    .foregroundStyle(.white.opacity(0.78))
+                                    .foregroundStyle(.secondary)
 
                                 HStack {
                                     Text(item.status.title)
@@ -90,20 +90,20 @@ struct ActivityView: View {
                                             appState.remindEmployer(for: item.id)
                                         }
                                         .buttonStyle(.borderedProminent)
-                                        .tint(.cyan)
+                                        .tint(.purple)
                                         .disabled(!appState.canSendReminder(for: item))
 
                                         if let cooldown = appState.reminderCooldownText(for: item) {
                                             Text(cooldown)
                                                 .font(.caption2)
-                                                .foregroundStyle(.white.opacity(0.72))
+                                                .foregroundStyle(.secondary)
                                         }
                                     }
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(12)
-                            .background(Color.white.opacity(0.06))
+                            .background(Color.primary.opacity(0.06))
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
                     }
@@ -122,12 +122,12 @@ struct ActivityView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Панель роботодавця")
                     .font(.headline)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                 Text("Активних змін: \(shifts.filter { $0.status == .open }.count)")
-                    .foregroundStyle(.white.opacity(0.86))
-                Text("Прогноз виплат: $\(payroll)")
+                    .foregroundStyle(.secondary)
+                Text("Прогноз виплат: \(payroll) грн")
                     .font(.title3.bold())
-                    .foregroundStyle(.cyan)
+                    .foregroundStyle(.purple)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .glassCard()
@@ -135,11 +135,11 @@ struct ActivityView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Зміни та набір")
                     .font(.headline)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
 
                 if shifts.isEmpty {
                     Text("У вас поки немає опублікованих змін")
-                        .foregroundStyle(.white.opacity(0.75))
+                        .foregroundStyle(.secondary)
                 } else {
                     ForEach(shifts) { shift in
                         let shiftApplications = appState.applications(for: shift.id)
@@ -151,16 +151,16 @@ struct ActivityView: View {
                             HStack {
                                 Text(shift.title)
                                     .font(.headline)
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(.primary)
                                 Spacer()
                                 Text("\(accepted)/\(shift.requiredWorkers)")
                                     .font(.caption.bold())
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(.primary)
                             }
 
                             Text("Відгуки: \(shiftApplications.count), очікують: \(pending), статус: \(shift.status.title)")
                                 .font(.subheadline)
-                                .foregroundStyle(.white.opacity(0.78))
+                                .foregroundStyle(.secondary)
 
                             if critical > 0 {
                                 Label("SLA ризик: \(critical) заявок майже прострочені", systemImage: "exclamationmark.triangle.fill")
@@ -170,7 +170,7 @@ struct ActivityView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(12)
-                        .background(Color.white.opacity(0.06))
+                        .background(Color.primary.opacity(0.06))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                 }

@@ -6,7 +6,7 @@ struct RoleSelectionView: View {
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [Color.indigo.opacity(0.9), Color.blue.opacity(0.7), Color.cyan.opacity(0.55)],
+                colors: [Color.purple.opacity(0.9), Color.indigo.opacity(0.72), Color.pink.opacity(0.55)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )

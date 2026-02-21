@@ -20,8 +20,9 @@ struct ShiftDetailView: View {
                     Text(liveShift.title)
                         .font(.headline)
                     Text(liveShift.details)
-                    Text("Оплата: $\(liveShift.pay)/год")
+                    Text("Оплата: \(liveShift.pay) грн/год")
                     Text("Тривалість: \(liveShift.durationHours) год")
+                    Text("Формат: \(liveShift.workFormat.title)")
                     Text("Дата: \(liveShift.startDate, style: .date) \(liveShift.startDate, style: .time)")
                         .foregroundStyle(.secondary)
 

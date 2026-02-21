@@ -18,7 +18,7 @@ struct NotificationsView: View {
                         systemImage: "bell.slash",
                         description: Text("Тут з'являться рішення по відгуках, нагадування та системні оновлення.")
                     )
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(.primary)
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 10) {
@@ -62,22 +62,22 @@ struct NotificationsView: View {
                 HStack {
                     Text(item.title)
                         .font(.headline)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                     Spacer(minLength: 8)
                     if !item.isRead {
                         Circle()
-                            .fill(Color.cyan)
+                            .fill(Color.purple)
                             .frame(width: 8, height: 8)
                     }
                 }
 
                 Text(item.message)
                     .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.85))
+                    .foregroundStyle(.secondary)
 
                 Text(item.createdAt, style: .time)
                     .font(.caption)
-                    .foregroundStyle(.white.opacity(0.65))
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(14)

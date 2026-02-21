@@ -2,12 +2,24 @@ import Foundation
 import Combine
 import CoreLocation
 
+enum EmailVerificationStep {
+    case none
+    case confirmFirstEmail
+    case verifyOldEmail
+    case enterNewEmail
+    case verifyNewEmail
+}
+
 final class AppState: ObservableObject {
     private let employerResponseSLAHours = 2
     private let reminderCooldownMinutes = 20
     private let criticalSLAMinutes = 30
+    private let usersStorageKey = "quickgig.users.v1"
+    private let currentUserIdStorageKey = "quickgig.currentUserId.v1"
+    private let verificationCooldownSeconds = 60
     private var slaTimerCancellable: AnyCancellable?
     private var reminderTimestamps: [UUID: Date] = [:]
+    private var activePhoneVerificationCode: String?
 
     @Published var currentUser: AppUser?
     @Published var users: [AppUser] = []
@@ -17,15 +29,29 @@ final class AppState: ObservableObject {
     @Published var notifications: [InAppNotification] = []
     @Published var authErrorMessage: String?
     @Published private(set) var shouldRequestLocationPermission = false
+    @Published private(set) var phoneVerificationMaskedPhone = ""
+    @Published private(set) var phoneVerificationDemoCode = ""
+    @Published private(set) var phoneVerificationResendAvailableAt = Date()
+    @Published private(set) var emailVerificationStep: EmailVerificationStep = .none
+    @Published private(set) var emailVerificationDemoCode = ""
 
     init() {
-        seedData()
+        if !loadPersistedAuthState() {
+            seedData()
+            persistAuthState()
+        }
+        ensureDemoMarketplaceData()
         NotificationService.requestAuthorizationIfNeeded()
         startSLATimer()
     }
 
     var isLoggedIn: Bool {
         currentUser != nil
+    }
+
+    var requiresPhoneVerification: Bool {
+        guard let currentUser else { return false }
+        return !currentUser.isPhoneVerified
     }
 
     func currentUserNotifications() -> [InAppNotification] {
@@ -57,17 +83,17 @@ final class AppState: ObservableObject {
         return true
     }
 
-    func register(name: String, email: String, password: String, role: UserRole) -> Bool {
+    func register(name: String, phone: String, password: String, role: UserRole) -> Bool {
         let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedPhone = normalizePhone(phone)
 
         guard !normalizedName.isEmpty else {
             authErrorMessage = "Введіть ім'я або назву компанії"
             return false
         }
 
-        guard normalizedEmail.contains("@") && normalizedEmail.contains(".") else {
-            authErrorMessage = "Введіть коректний email"
+        guard isValidPhone(normalizedPhone) else {
+            authErrorMessage = "Номер має починатися з 380 і містити 12 цифр"
             return false
         }
 
@@ -76,17 +102,21 @@ final class AppState: ObservableObject {
             return false
         }
 
-        if users.contains(where: { $0.email.lowercased() == normalizedEmail }) {
-            authErrorMessage = "Користувач з таким email вже існує"
+        if users.contains(where: { $0.phone == normalizedPhone }) {
+            authErrorMessage = "Користувач з таким номером вже існує"
             return false
         }
 
         let user = AppUser(
             id: UUID(),
             name: normalizedName,
-            email: normalizedEmail,
+            phone: normalizedPhone,
+            isPhoneVerified: false,
+            email: "",
+            isEmailVerified: false,
             password: password,
             role: role,
+            resumeSummary: "",
             isVerifiedEmployer: false,
             rating: 0,
             reviewsCount: 0
@@ -96,13 +126,19 @@ final class AppState: ObservableObject {
         currentUser = user
         shouldRequestLocationPermission = true
         authErrorMessage = nil
+        beginPhoneVerificationIfNeeded()
+        persistAuthState()
         return true
     }
 
-    func login(email: String, password: String, expectedRole: UserRole? = nil) -> Bool {
-        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    func login(phone: String, password: String, expectedRole: UserRole? = nil) -> Bool {
+        let normalizedPhone = normalizePhone(phone)
+        guard isValidPhone(normalizedPhone) else {
+            authErrorMessage = "Номер має починатися з 380 і містити 12 цифр"
+            return false
+        }
 
-        guard let user = users.first(where: { $0.email.lowercased() == normalizedEmail }) else {
+        guard let user = users.first(where: { $0.phone == normalizedPhone }) else {
             authErrorMessage = "Користувача не знайдено"
             return false
         }
@@ -122,15 +158,159 @@ final class AppState: ObservableObject {
         currentUser = user
         shouldRequestLocationPermission = false
         authErrorMessage = nil
+        beginPhoneVerificationIfNeeded()
+        persistAuthState()
+        return true
+    }
+
+    func updateCurrentUserEmail(_ email: String) -> Bool {
+        guard let currentUser else { return false }
+        let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        if !normalized.isEmpty && !isValidEmail(normalized) {
+            authErrorMessage = "Введіть коректний email"
+            return false
+        }
+
+        guard let index = users.firstIndex(where: { $0.id == currentUser.id }) else { return false }
+        users[index].email = normalized
+        self.currentUser = users[index]
+        authErrorMessage = nil
+        persistAuthState()
+        return true
+    }
+
+    func startFirstEmailVerification(email: String) -> Bool {
+        guard let currentUser else { return false }
+        let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard isValidEmail(normalized) else {
+            authErrorMessage = "Введіть коректний email"
+            return false
+        }
+
+        guard let index = users.firstIndex(where: { $0.id == currentUser.id }) else { return false }
+        users[index].email = normalized
+        users[index].isEmailVerified = false
+        self.currentUser = users[index]
+        emailVerificationStep = .confirmFirstEmail
+        emailVerificationDemoCode = generate4DigitCode()
+        authErrorMessage = nil
+        persistAuthState()
+        return true
+    }
+
+    func confirmFirstEmail(code: String) -> Bool {
+        guard emailVerificationStep == .confirmFirstEmail else { return false }
+        guard code.trimmingCharacters(in: .whitespacesAndNewlines) == emailVerificationDemoCode else {
+            authErrorMessage = "Невірний код підтвердження"
+            return false
+        }
+        guard let currentUser, let index = users.firstIndex(where: { $0.id == currentUser.id }) else { return false }
+        users[index].isEmailVerified = true
+        self.currentUser = users[index]
+        emailVerificationStep = .none
+        emailVerificationDemoCode = ""
+        authErrorMessage = nil
+        persistAuthState()
+        return true
+    }
+
+    func beginEmailChange() {
+        guard let currentUser, currentUser.isEmailVerified, !currentUser.email.isEmpty else { return }
+        emailVerificationStep = .verifyOldEmail
+        emailVerificationDemoCode = generate4DigitCode()
+        authErrorMessage = nil
+    }
+
+    func confirmOldEmailForChange(code: String) -> Bool {
+        guard emailVerificationStep == .verifyOldEmail else { return false }
+        guard code.trimmingCharacters(in: .whitespacesAndNewlines) == emailVerificationDemoCode else {
+            authErrorMessage = "Невірний код зі старої пошти"
+            return false
+        }
+        emailVerificationStep = .enterNewEmail
+        emailVerificationDemoCode = ""
+        authErrorMessage = nil
+        return true
+    }
+
+    func submitNewEmailForChange(_ email: String) -> Bool {
+        guard emailVerificationStep == .enterNewEmail else { return false }
+        let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard isValidEmail(normalized) else {
+            authErrorMessage = "Введіть коректний email"
+            return false
+        }
+        guard let currentUser, let index = users.firstIndex(where: { $0.id == currentUser.id }) else { return false }
+        users[index].email = normalized
+        users[index].isEmailVerified = false
+        self.currentUser = users[index]
+        emailVerificationStep = .verifyNewEmail
+        emailVerificationDemoCode = generate4DigitCode()
+        authErrorMessage = nil
+        persistAuthState()
+        return true
+    }
+
+    func confirmNewEmailForChange(code: String) -> Bool {
+        guard emailVerificationStep == .verifyNewEmail else { return false }
+        guard code.trimmingCharacters(in: .whitespacesAndNewlines) == emailVerificationDemoCode else {
+            authErrorMessage = "Невірний код з нової пошти"
+            return false
+        }
+        guard let currentUser, let index = users.firstIndex(where: { $0.id == currentUser.id }) else { return false }
+        users[index].isEmailVerified = true
+        self.currentUser = users[index]
+        emailVerificationStep = .none
+        emailVerificationDemoCode = ""
+        authErrorMessage = nil
+        persistAuthState()
+        return true
+    }
+
+    func ensurePhoneVerificationSession() {
+        beginPhoneVerificationIfNeeded()
+    }
+
+    func phoneVerificationSecondsRemaining(now: Date = Date()) -> Int {
+        max(0, Int(phoneVerificationResendAvailableAt.timeIntervalSince(now)))
+    }
+
+    @discardableResult
+    func resendPhoneVerificationCode(now: Date = Date()) -> Bool {
+        guard requiresPhoneVerification else { return false }
+        guard phoneVerificationSecondsRemaining(now: now) == 0 else { return false }
+
+        generatePhoneVerificationCode(now: now)
+        return true
+    }
+
+    func submitPhoneVerification(code: String) -> Bool {
+        guard let currentUser, requiresPhoneVerification else { return true }
+        let normalized = code.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard normalized == activePhoneVerificationCode else {
+            authErrorMessage = "Невірний код підтвердження"
+            return false
+        }
+
+        guard let index = users.firstIndex(where: { $0.id == currentUser.id }) else { return false }
+        users[index].isPhoneVerified = true
+        self.currentUser = users[index]
+        authErrorMessage = nil
+        resetPhoneVerificationSession()
+        persistAuthState()
         return true
     }
 
     func logout() {
         currentUser = nil
         shouldRequestLocationPermission = false
+        resetPhoneVerificationSession()
+        persistAuthState()
     }
 
-    func addShift(title: String, details: String, pay: Int, startDate: Date, endDate: Date, coordinate: CLLocationCoordinate2D, requiredWorkers: Int) {
+    func addShift(title: String, details: String, pay: Int, startDate: Date, endDate: Date, coordinate: CLLocationCoordinate2D, workFormat: WorkFormat, requiredWorkers: Int) {
         guard let currentUser, currentUser.role == .employer else { return }
         let finalCoordinate = UkraineRegion.contains(coordinate) ? coordinate : UkraineRegion.center
 
@@ -144,6 +324,7 @@ final class AppState: ObservableObject {
                 endDate: endDate,
                 coordinate: finalCoordinate,
                 employerId: currentUser.id,
+                workFormat: workFormat,
                 requiredWorkers: max(1, requiredWorkers),
                 status: .open
             )
@@ -342,6 +523,15 @@ final class AppState: ObservableObject {
         recalculateRating(for: userId)
     }
 
+    func updateCurrentUserResume(_ text: String) {
+        guard let currentUser else { return }
+        guard let index = users.firstIndex(where: { $0.id == currentUser.id }) else { return }
+
+        users[index].resumeSummary = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.currentUser = users[index]
+        persistAuthState()
+    }
+
     func user(by id: UUID) -> AppUser? {
         users.first(where: { $0.id == id })
     }
@@ -425,6 +615,135 @@ final class AppState: ObservableObject {
         )
     }
 
+    private func normalizePhone(_ phone: String) -> String {
+        let trimmed = phone.trimmingCharacters(in: .whitespacesAndNewlines)
+        let allowed = CharacterSet.decimalDigits
+        let digits = trimmed.unicodeScalars.filter { allowed.contains($0) }
+        return String(String.UnicodeScalarView(digits))
+    }
+
+    private func isValidPhone(_ phone: String) -> Bool {
+        phone.count == 12 && phone.hasPrefix("380") && phone.allSatisfy(\.isNumber)
+    }
+
+    private func isValidEmail(_ email: String) -> Bool {
+        let regex = #"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"#
+        return email.range(of: regex, options: .regularExpression) != nil
+    }
+
+    private func generate4DigitCode() -> String {
+        String(Int.random(in: 1000...9999))
+    }
+
+    private func beginPhoneVerificationIfNeeded() {
+        guard requiresPhoneVerification, let currentUser else {
+            resetPhoneVerificationSession()
+            return
+        }
+
+        phoneVerificationMaskedPhone = maskPhone(currentUser.phone)
+        if activePhoneVerificationCode == nil {
+            generatePhoneVerificationCode(now: Date())
+        }
+    }
+
+    private func generatePhoneVerificationCode(now: Date) {
+        let code = Int.random(in: 1000...9999)
+        activePhoneVerificationCode = String(code)
+        phoneVerificationDemoCode = String(code)
+        phoneVerificationResendAvailableAt = now.addingTimeInterval(TimeInterval(verificationCooldownSeconds))
+    }
+
+    private func resetPhoneVerificationSession() {
+        activePhoneVerificationCode = nil
+        phoneVerificationDemoCode = ""
+        phoneVerificationMaskedPhone = ""
+        phoneVerificationResendAvailableAt = Date()
+    }
+
+    private func maskPhone(_ phone: String) -> String {
+        guard phone.count > 4 else { return phone }
+        let suffix = phone.suffix(4)
+        return "••••••\(suffix)"
+    }
+
+    private struct PersistedUser: Codable {
+        let id: UUID
+        let name: String
+        let phone: String
+        let isPhoneVerified: Bool
+        let email: String
+        let isEmailVerified: Bool
+        let password: String
+        let role: String
+        let resumeSummary: String
+        let isVerifiedEmployer: Bool
+        let rating: Double
+        let reviewsCount: Int
+    }
+
+    private func persistAuthState() {
+        let payload = users.map {
+            PersistedUser(
+                id: $0.id,
+                name: $0.name,
+                phone: $0.phone,
+                isPhoneVerified: $0.isPhoneVerified,
+                email: $0.email,
+                isEmailVerified: $0.isEmailVerified,
+                password: $0.password,
+                role: $0.role.rawValue,
+                resumeSummary: $0.resumeSummary,
+                isVerifiedEmployer: $0.isVerifiedEmployer,
+                rating: $0.rating,
+                reviewsCount: $0.reviewsCount
+            )
+        }
+
+        if let encoded = try? JSONEncoder().encode(payload) {
+            UserDefaults.standard.set(encoded, forKey: usersStorageKey)
+        }
+        UserDefaults.standard.set(currentUser?.id.uuidString, forKey: currentUserIdStorageKey)
+    }
+
+    private func loadPersistedAuthState() -> Bool {
+        guard let data = UserDefaults.standard.data(forKey: usersStorageKey),
+              let payload = try? JSONDecoder().decode([PersistedUser].self, from: data),
+              !payload.isEmpty else { return false }
+
+        let restoredUsers: [AppUser] = payload.compactMap { item in
+            guard let role = UserRole(rawValue: item.role) else { return nil }
+            return AppUser(
+                id: item.id,
+                name: item.name,
+                phone: item.phone,
+                isPhoneVerified: item.isPhoneVerified,
+                email: item.email,
+                isEmailVerified: item.isEmailVerified,
+                password: item.password,
+                role: role,
+                resumeSummary: item.resumeSummary,
+                isVerifiedEmployer: item.isVerifiedEmployer,
+                rating: item.rating,
+                reviewsCount: item.reviewsCount
+            )
+        }
+        guard !restoredUsers.isEmpty else { return false }
+
+        users = restoredUsers
+
+        if let idRaw = UserDefaults.standard.string(forKey: currentUserIdStorageKey),
+           let id = UUID(uuidString: idRaw),
+           let found = restoredUsers.first(where: { $0.id == id }) {
+            currentUser = found
+            beginPhoneVerificationIfNeeded()
+        } else {
+            currentUser = nil
+            resetPhoneVerificationSession()
+        }
+        return true
+    }
+
     private func notifyStatusChangeIfNeeded(for application: ShiftApplication) {
         guard application.status != .pending,
               let shift = shift(by: application.shiftId) else { return }
@@ -451,13 +770,100 @@ final class AppState: ObservableObject {
         }
     }
 
+    private func ensureDemoMarketplaceData() {
+        if shifts.count >= 10 { return }
+        guard users.filter({ $0.role == .employer }).count >= 2,
+              users.filter({ $0.role == .worker }).count >= 2 else { return }
+
+        let employers = users.filter { $0.role == .employer }
+        let workers = users.filter { $0.role == .worker }
+        let employer1 = employers[0]
+        let employer2 = employers[1]
+        let worker1 = workers[0]
+        let worker2 = workers[1]
+
+        let calendar = Calendar.current
+        let now = Date()
+        let cities: [CLLocationCoordinate2D] = [
+            CLLocationCoordinate2D(latitude: 50.4501, longitude: 30.5234),
+            CLLocationCoordinate2D(latitude: 49.8397, longitude: 24.0297),
+            CLLocationCoordinate2D(latitude: 46.4825, longitude: 30.7233),
+            CLLocationCoordinate2D(latitude: 48.4647, longitude: 35.0462),
+            CLLocationCoordinate2D(latitude: 49.9935, longitude: 36.2304)
+        ]
+
+        let templates: [(String, String, Int, Int, Int, WorkFormat, Int)] = [
+            ("Бариста на ранок", "Підготовка кави, робота з касою та гостями", 180, 1, 8, .offline, 2),
+            ("Комплектувальник складу", "Збір замовлень, сканер, контроль якості", 190, 1, 6, .offline, 3),
+            ("Промоутер біля ТЦ", "Роздача листівок та консультація гостей", 160, 2, 5, .offline, 4),
+            ("Оператор чату", "Відповіді клієнтам у месенджері за скриптом", 170, 2, 7, .online, 2),
+            ("Кур'єр по району", "Доставка малих посилок у межах району", 210, 3, 6, .offline, 5),
+            ("Асистент HR", "Перший контакт з кандидатами, перевірка анкет", 185, 3, 8, .online, 1),
+            ("Фасувальник продукції", "Фасування товарів, маркування, облік", 175, 4, 7, .offline, 3),
+            ("Контент-менеджер", "Оновлення карток товарів, фото та описи", 200, 4, 6, .online, 1),
+            ("Адміністратор залу", "Зустріч гостей, координація персоналу", 220, 5, 9, .offline, 2),
+            ("Сапорт e-commerce", "Обробка запитів клієнтів у CRM", 195, 5, 8, .online, 2),
+            ("Мерчендайзер", "Викладка товару та перевірка цінників", 180, 6, 6, .offline, 3),
+            ("SMM-асистент", "Публікації, сторіз, базова аналітика", 190, 6, 5, .online, 1),
+            ("Офіціант на банкет", "Обслуговування події у вечірню зміну", 230, 7, 8, .offline, 4),
+            ("Верифікація даних", "Перевірка записів та виправлення помилок", 170, 7, 6, .online, 2),
+            ("Робота на інвентаризації", "Підрахунок залишків на складі", 205, 8, 10, .offline, 6)
+        ]
+
+        shifts = templates.enumerated().map { index, item in
+            let startBase = calendar.date(byAdding: .day, value: item.3, to: now) ?? now
+            let startDate = calendar.date(bySettingHour: 8 + (index % 8), minute: (index % 2) * 30, second: 0, of: startBase) ?? startBase
+            let endDate = calendar.date(byAdding: .hour, value: item.4, to: startDate) ?? startDate
+            let employerId = index % 2 == 0 ? employer1.id : employer2.id
+            let coordinate = cities[index % cities.count]
+
+            return JobShift(
+                id: UUID(),
+                title: item.0,
+                details: item.1,
+                pay: item.2,
+                startDate: startDate,
+                endDate: endDate,
+                coordinate: coordinate,
+                employerId: employerId,
+                workFormat: item.5,
+                requiredWorkers: item.6,
+                status: .open
+            )
+        }
+
+        reviews = [
+            Review(id: UUID(), fromUserId: worker1.id, toUserId: employer1.id, stars: 5, comment: "Усе чітко, оплатили вчасно", date: now),
+            Review(id: UUID(), fromUserId: employer1.id, toUserId: worker1.id, stars: 5, comment: "Відповідальний і пунктуальний", date: now),
+            Review(id: UUID(), fromUserId: worker2.id, toUserId: employer2.id, stars: 4, comment: "Завдання зрозуміле, але багато фізичного навантаження", date: now)
+        ]
+
+        recalculateRating(for: employer1.id)
+        recalculateRating(for: employer2.id)
+        recalculateRating(for: worker1.id)
+        recalculateRating(for: worker2.id)
+
+        applications = [
+            ShiftApplication(id: UUID(), shiftId: shifts.first?.id ?? UUID(), workerId: worker1.id, status: .accepted, createdAt: now, respondBy: now),
+            ShiftApplication(id: UUID(), shiftId: shifts.dropFirst().first?.id ?? UUID(), workerId: worker2.id, status: .pending, createdAt: now, respondBy: calendar.date(byAdding: .hour, value: employerResponseSLAHours, to: now) ?? now)
+        ]
+
+        for shift in shifts {
+            syncShiftCapacity(for: shift.id)
+        }
+    }
+
     private func seedData() {
         let employer1 = AppUser(
             id: UUID(),
             name: "Cafe Central",
+            phone: "380671112233",
+            isPhoneVerified: true,
             email: "cafe@quickgig.app",
+            isEmailVerified: true,
             password: "123456",
             role: .employer,
+            resumeSummary: "",
             isVerifiedEmployer: true,
             rating: 0,
             reviewsCount: 0
@@ -466,9 +872,13 @@ final class AppState: ObservableObject {
         let employer2 = AppUser(
             id: UUID(),
             name: "Logistics Hub",
+            phone: "380672223344",
+            isPhoneVerified: true,
             email: "logistics@quickgig.app",
+            isEmailVerified: true,
             password: "123456",
             role: .employer,
+            resumeSummary: "",
             isVerifiedEmployer: false,
             rating: 0,
             reviewsCount: 0
@@ -477,9 +887,13 @@ final class AppState: ObservableObject {
         let worker1 = AppUser(
             id: UUID(),
             name: "Alex Ivanov",
+            phone: "380673334455",
+            isPhoneVerified: true,
             email: "alex@quickgig.app",
+            isEmailVerified: true,
             password: "123456",
             role: .worker,
+            resumeSummary: "Бариста, каса, робота з гостями.",
             isVerifiedEmployer: false,
             rating: 0,
             reviewsCount: 0
@@ -488,9 +902,13 @@ final class AppState: ObservableObject {
         let worker2 = AppUser(
             id: UUID(),
             name: "Nina Petrova",
+            phone: "380674445566",
+            isPhoneVerified: true,
             email: "nina@quickgig.app",
+            isEmailVerified: true,
             password: "123456",
             role: .worker,
+            resumeSummary: "Складські роботи, пакування, інвентаризація.",
             isVerifiedEmployer: false,
             rating: 0,
             reviewsCount: 0
@@ -500,55 +918,53 @@ final class AppState: ObservableObject {
 
         let calendar = Calendar.current
         let now = Date()
-        let start1 = calendar.date(byAdding: .day, value: 1, to: now) ?? now
-        let end1 = calendar.date(byAdding: .hour, value: 8, to: start1) ?? start1
+        let cities: [CLLocationCoordinate2D] = [
+            CLLocationCoordinate2D(latitude: 50.4501, longitude: 30.5234), // Київ
+            CLLocationCoordinate2D(latitude: 49.8397, longitude: 24.0297), // Львів
+            CLLocationCoordinate2D(latitude: 46.4825, longitude: 30.7233), // Одеса
+            CLLocationCoordinate2D(latitude: 48.4647, longitude: 35.0462), // Дніпро
+            CLLocationCoordinate2D(latitude: 49.9935, longitude: 36.2304)  // Харків
+        ]
 
-        let start2 = calendar.date(byAdding: .day, value: 2, to: now) ?? now
-        let end2 = calendar.date(byAdding: .hour, value: 6, to: start2) ?? start2
+        let templates: [(String, String, Int, Int, Int, WorkFormat, Int)] = [
+            ("Бариста на ранок", "Підготовка кави, робота з касою та гостями", 180, 1, 8, .offline, 2),
+            ("Комплектувальник складу", "Збір замовлень, сканер, контроль якості", 190, 1, 6, .offline, 3),
+            ("Промоутер біля ТЦ", "Роздача листівок та консультація гостей", 160, 2, 5, .offline, 4),
+            ("Оператор чату", "Відповіді клієнтам у месенджері за скриптом", 170, 2, 7, .online, 2),
+            ("Кур'єр по району", "Доставка малих посилок у межах району", 210, 3, 6, .offline, 5),
+            ("Асистент HR", "Перший контакт з кандидатами, перевірка анкет", 185, 3, 8, .online, 1),
+            ("Фасувальник продукції", "Фасування товарів, маркування, облік", 175, 4, 7, .offline, 3),
+            ("Контент-менеджер", "Оновлення карток товарів, фото та описи", 200, 4, 6, .online, 1),
+            ("Адміністратор залу", "Зустріч гостей, координація персоналу", 220, 5, 9, .offline, 2),
+            ("Сапорт e-commerce", "Обробка запитів клієнтів у CRM", 195, 5, 8, .online, 2),
+            ("Мерчендайзер", "Викладка товару та перевірка цінників", 180, 6, 6, .offline, 3),
+            ("SMM-асистент", "Публікації, сторіз, базова аналітика", 190, 6, 5, .online, 1),
+            ("Офіціант на банкет", "Обслуговування події у вечірню зміну", 230, 7, 8, .offline, 4),
+            ("Верифікація даних", "Перевірка записів та виправлення помилок", 170, 7, 6, .online, 2),
+            ("Робота на інвентаризації", "Підрахунок залишків на складі", 205, 8, 10, .offline, 6)
+        ]
 
-        let start3 = calendar.date(byAdding: .day, value: 3, to: now) ?? now
-        let end3 = calendar.date(byAdding: .hour, value: 10, to: start3) ?? start3
+        shifts = templates.enumerated().map { index, item in
+            let startBase = calendar.date(byAdding: .day, value: item.3, to: now) ?? now
+            let startDate = calendar.date(bySettingHour: 8 + (index % 8), minute: (index % 2) * 30, second: 0, of: startBase) ?? startBase
+            let endDate = calendar.date(byAdding: .hour, value: item.4, to: startDate) ?? startDate
+            let employerId = index % 2 == 0 ? employer1.id : employer2.id
+            let coordinate = cities[index % cities.count]
 
-        let shift1 = JobShift(
-            id: UUID(),
-            title: "Бариста на ранок",
-            details: "Потрібна допомога з 08:00 до 16:00, досвід вітається",
-            pay: 120,
-            startDate: start1,
-            endDate: end1,
-            coordinate: CLLocationCoordinate2D(latitude: 50.4501, longitude: 30.5234),
-            employerId: employer1.id,
-            requiredWorkers: 2,
-            status: .open
-        )
-
-        let shift2 = JobShift(
-            id: UUID(),
-            title: "Вантажні роботи на складі",
-            details: "Склад, зміна на 6 годин, перерви включені",
-            pay: 140,
-            startDate: start2,
-            endDate: end2,
-            coordinate: CLLocationCoordinate2D(latitude: 49.8397, longitude: 24.0297),
-            employerId: employer2.id,
-            requiredWorkers: 1,
-            status: .open
-        )
-
-        let shift3 = JobShift(
-            id: UUID(),
-            title: "Промо біля ТЦ",
-            details: "Роздача листівок, комунікація з клієнтами",
-            pay: 110,
-            startDate: start3,
-            endDate: end3,
-            coordinate: CLLocationCoordinate2D(latitude: 46.4825, longitude: 30.7233),
-            employerId: employer1.id,
-            requiredWorkers: 3,
-            status: .open
-        )
-
-        shifts = [shift1, shift2, shift3]
+            return JobShift(
+                id: UUID(),
+                title: item.0,
+                details: item.1,
+                pay: item.2,
+                startDate: startDate,
+                endDate: endDate,
+                coordinate: coordinate,
+                employerId: employerId,
+                workFormat: item.5,
+                requiredWorkers: item.6,
+                status: .open
+            )
+        }
 
         reviews = [
             Review(
@@ -585,7 +1001,7 @@ final class AppState: ObservableObject {
         applications = [
             ShiftApplication(
                 id: UUID(),
-                shiftId: shift1.id,
+                shiftId: shifts.first?.id ?? UUID(),
                 workerId: worker1.id,
                 status: .accepted,
                 createdAt: now,
@@ -593,7 +1009,7 @@ final class AppState: ObservableObject {
             ),
             ShiftApplication(
                 id: UUID(),
-                shiftId: shift2.id,
+                shiftId: shifts.dropFirst().first?.id ?? UUID(),
                 workerId: worker2.id,
                 status: .pending,
                 createdAt: now,
@@ -601,8 +1017,8 @@ final class AppState: ObservableObject {
             )
         ]
 
-        syncShiftCapacity(for: shift1.id)
-        syncShiftCapacity(for: shift2.id)
-        syncShiftCapacity(for: shift3.id)
+        for shift in shifts {
+            syncShiftCapacity(for: shift.id)
+        }
     }
 }

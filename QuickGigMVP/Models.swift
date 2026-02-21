@@ -52,12 +52,32 @@ enum ApplicationStatus: String, CaseIterable, Identifiable {
     }
 }
 
+enum WorkFormat: String, CaseIterable, Identifiable {
+    case offline
+    case online
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .offline:
+            return "Офлайн"
+        case .online:
+            return "Онлайн"
+        }
+    }
+}
+
 struct AppUser: Identifiable {
     let id: UUID
     var name: String
+    var phone: String
+    var isPhoneVerified: Bool
     var email: String
+    var isEmailVerified: Bool
     var password: String
     var role: UserRole
+    var resumeSummary: String
     var isVerifiedEmployer: Bool
     var rating: Double
     var reviewsCount: Int
@@ -78,6 +98,7 @@ struct JobShift: Identifiable {
     var endDate: Date
     var coordinate: CLLocationCoordinate2D
     var employerId: UUID
+    var workFormat: WorkFormat
     var requiredWorkers: Int
     var status: ShiftStatus
 

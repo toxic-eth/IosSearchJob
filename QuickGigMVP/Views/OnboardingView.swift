@@ -9,35 +9,39 @@ private struct OnboardingPage: Identifiable {
 }
 
 struct OnboardingView: View {
-    let onFinish: () -> Void
+    let onSkip: () -> Void
+    let onSelectRole: (UserRole) -> Void
+    @AppStorage("appLanguage") private var appLanguageRawValue = AppLanguage.uk.rawValue
 
     @State private var currentPage = 0
 
     private let pages: [OnboardingPage] = [
         OnboardingPage(
-            title: "Швидкий старт у зміні",
-            subtitle: "Знаходьте підробіток поруч, відгукуйтесь за хвилину та виходьте вже сьогодні або завтра.",
+            title: "onb.quick_title",
+            subtitle: "onb.quick_sub",
             icon: "briefcase.fill",
-            gradient: [Color.blue, Color.cyan]
+            gradient: [Color.indigo, Color.purple]
         ),
         OnboardingPage(
-            title: "Прозорі умови",
-            subtitle: "Оплата, час, адреса та опис задачі видно до відгуку. Жодних сюрпризів на місці.",
+            title: "onb.clear_title",
+            subtitle: "onb.clear_sub",
             icon: "checkmark.shield.fill",
-            gradient: [Color.green, Color.mint]
+            gradient: [Color.purple, Color.indigo]
         ),
         OnboardingPage(
-            title: "Рейтинг і довіра",
-            subtitle: "Працівники та роботодавці оцінюють одне одного після зміни, формуючи чесну репутацію.",
-            icon: "star.circle.fill",
-            gradient: [Color.orange, Color.red]
+            title: "onb.safe_title",
+            subtitle: "onb.safe_sub",
+            icon: "lock.shield.fill",
+            gradient: [Color.purple, Color.black]
         ),
     ]
+
+    private var language: AppLanguage { resolvedLanguage(from: appLanguageRawValue) }
 
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [Color.black.opacity(0.95), Color.blue.opacity(0.65), Color.cyan.opacity(0.45)],
+                colors: [Color.black.opacity(0.95), Color.purple.opacity(0.72), Color.indigo.opacity(0.6)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -46,8 +50,8 @@ struct OnboardingView: View {
             VStack(spacing: 22) {
                 HStack {
                     Spacer()
-                    Button("Пропустити") {
-                        onFinish()
+                    Button(I18n.t("onb.skip", language)) {
+                        onSkip()
                     }
                     .foregroundStyle(.white.opacity(0.85))
                 }
@@ -59,25 +63,32 @@ struct OnboardingView: View {
                             .padding(.horizontal, 20)
                             .tag(index)
                     }
+
+                    roleSelectionSlide
+                        .padding(.horizontal, 20)
+                        .tag(pages.count)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .always))
                 .frame(maxHeight: 540)
 
-                Button(currentPage == pages.count - 1 ? "Почати" : "Далі") {
-                    if currentPage == pages.count - 1 {
-                        onFinish()
-                    } else {
+                if currentPage < pages.count {
+                    Button(I18n.t("onb.next", language)) {
                         currentPage += 1
                     }
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(.white)
+                    .foregroundStyle(.black)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 24)
+                } else {
+                    Text(I18n.t("onb.pick_role", language))
+                        .font(.footnote)
+                        .foregroundStyle(.white.opacity(0.85))
+                        .padding(.bottom, 24)
                 }
-                .font(.headline)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(.white)
-                .foregroundStyle(.black)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-                .padding(.horizontal, 20)
-                .padding(.bottom, 24)
             }
         }
     }
@@ -99,13 +110,59 @@ struct OnboardingView: View {
                         .foregroundStyle(.white)
                 }
 
-            Text(page.title)
+            Text(I18n.t(page.title, language))
                 .font(.system(size: 30, weight: .bold))
                 .foregroundStyle(.white)
 
-            Text(page.subtitle)
+            Text(I18n.t(page.subtitle, language))
                 .font(.title3)
                 .foregroundStyle(.white.opacity(0.9))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+        .background(.ultraThinMaterial.opacity(0.45))
+        .clipShape(RoundedRectangle(cornerRadius: 24))
+    }
+
+    private var roleSelectionSlide: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            RoundedRectangle(cornerRadius: 24)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.purple, Color.indigo],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(height: 220)
+                .overlay {
+                    Image(systemName: "person.2.badge.key.fill")
+                        .font(.system(size: 68, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+
+            Text(I18n.t("onb.role_title", language))
+                .font(.system(size: 30, weight: .bold))
+                .foregroundStyle(.white)
+
+            Text(I18n.t("onb.role_sub", language))
+                .font(.title3)
+                .foregroundStyle(.white.opacity(0.9))
+
+            Button(I18n.t("onb.worker", language)) {
+                onSelectRole(.worker)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.purple)
+            .frame(maxWidth: .infinity, minHeight: 52)
+
+            Button(I18n.t("onb.employer", language)) {
+                onSelectRole(.employer)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.indigo)
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, minHeight: 52)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)

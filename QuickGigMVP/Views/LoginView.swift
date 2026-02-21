@@ -24,7 +24,7 @@ struct LoginView: View {
 
     @State private var mode: AuthMode = .login
     @State private var name = ""
-    @State private var email = ""
+    @State private var phone = ""
     @State private var password = ""
     @State private var confirmPassword = ""
 
@@ -32,7 +32,7 @@ struct LoginView: View {
         NavigationStack {
             ZStack {
                 LinearGradient(
-                    colors: [Color.blue.opacity(0.9), Color.cyan.opacity(0.5), Color.white],
+                    colors: [Color.purple.opacity(0.9), Color.indigo.opacity(0.6), Color.white],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -55,9 +55,9 @@ struct LoginView: View {
                                     .textFieldStyle(.roundedBorder)
                             }
 
-                            TextField(emailPlaceholder, text: $email)
+                            TextField(phonePlaceholder, text: $phone)
                                 .textInputAutocapitalization(.never)
-                                .keyboardType(.emailAddress)
+                                .keyboardType(.phonePad)
                                 .autocorrectionDisabled(true)
                                 .textFieldStyle(.roundedBorder)
 
@@ -125,8 +125,8 @@ struct LoginView: View {
         selectedRole == .worker ? "Ім'я та прізвище" : "Назва компанії"
     }
 
-    private var emailPlaceholder: String {
-        selectedRole == .worker ? "Ваш email" : "Email компанії"
+    private var phonePlaceholder: String {
+        selectedRole == .worker ? "Ваш номер телефону" : "Телефон компанії"
     }
 
     private var changeRoleTitle: String {
@@ -137,7 +137,7 @@ struct LoginView: View {
 
     private func submit() {
         if mode == .login {
-            _ = appState.login(email: email, password: password, expectedRole: selectedRole)
+            _ = appState.login(phone: phone, password: password, expectedRole: selectedRole)
             return
         }
 
@@ -146,7 +146,7 @@ struct LoginView: View {
             return
         }
 
-        _ = appState.register(name: name, email: email, password: password, role: selectedRole)
+        _ = appState.register(name: name, phone: phone, password: password, role: selectedRole)
     }
 }
 

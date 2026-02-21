@@ -13,7 +13,9 @@
 		2657DF99DC16FDF6B6CED59A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8FB632774EEF1A89320CFAA /* AppState.swift */; };
 		3C7B8A41DA91CA6B9CAB57C1 /* MainMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 249336023E0F0D2D4E911C04 /* MainMapView.swift */; };
 		4423740DBD5C313AAA8CB444 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA9A58F8B6B0D81B7404FC91 /* ProfileView.swift */; };
+		4AA1DFC50DA66FB6C0B9858D /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3930B36B26B370876C1CA684 /* Localization.swift */; };
 		4C9C49CDFCCF5B167EAE2DE1 /* AppStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54400FC6BCFF277EA9A9C349 /* AppStyle.swift */; };
+		60AD63EB932B5E0170BD69FF /* PhoneVerificationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E78CE607BDE74112CF6C274 /* PhoneVerificationView.swift */; };
 		70EBCD893F7D97897A2D0DA9 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C894EB9ABD4D9A6AC1BA1772 /* ContentView.swift */; };
 		7A9A479987ED066C6882343C /* ActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F59D843B932A45A53FDB3A9 /* ActivityView.swift */; };
 		82E98AD661CDBEC1DBEC9266 /* RoleSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD0B94CB1246452B3FF86CCD /* RoleSelectionView.swift */; };
@@ -24,18 +26,22 @@
 		B63B10275B08661AC39C9FDA /* NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08A22F9479DF8319F4958C3D /* NotificationsView.swift */; };
 		C99D8860706C373538D484BD /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F254DCDF256DAF3C54F5B6E /* Models.swift */; };
 		D8E138E6F4274FB52DCBF900 /* LocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D338FB73AF734A49A62F18B /* LocationService.swift */; };
+		E537D03D47507DA9C0BF83E0 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA5888CF87E20959327F1088 /* SettingsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		08A22F9479DF8319F4958C3D /* NotificationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsView.swift; sourceTree = "<group>"; };
 		244C116E2B6BA5B0A7B76053 /* ShiftDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShiftDetailView.swift; sourceTree = "<group>"; };
 		249336023E0F0D2D4E911C04 /* MainMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainMapView.swift; sourceTree = "<group>"; };
+		3930B36B26B370876C1CA684 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
 		3F254DCDF256DAF3C54F5B6E /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		3F59D843B932A45A53FDB3A9 /* ActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityView.swift; sourceTree = "<group>"; };
 		54400FC6BCFF277EA9A9C349 /* AppStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStyle.swift; sourceTree = "<group>"; };
 		59DD79D2835116A42471AB3C /* AddShiftView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddShiftView.swift; sourceTree = "<group>"; };
 		5C1EBFEE688FFC116FF701DD /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		7D338FB73AF734A49A62F18B /* LocationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationService.swift; sourceTree = "<group>"; };
+		9E78CE607BDE74112CF6C274 /* PhoneVerificationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneVerificationView.swift; sourceTree = "<group>"; };
+		AA5888CF87E20959327F1088 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		B843BB799C8237174C77A4B1 /* QuickGigMVP.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = QuickGigMVP.xcodeproj; sourceTree = "<group>"; };
 		B8FB632774EEF1A89320CFAA /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		C03136F2C8400F1F5442BE0A /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
@@ -48,7 +54,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
-		0AA0973D2F49E346009D1591 /* Products */ = {
+		0A1B81DA2F4A71D90088E5B6 /* Products */ = {
 			isa = PBXGroup;
 			name = Products;
 			sourceTree = "<group>";
@@ -81,8 +87,10 @@
 				249336023E0F0D2D4E911C04 /* MainMapView.swift */,
 				08A22F9479DF8319F4958C3D /* NotificationsView.swift */,
 				C03136F2C8400F1F5442BE0A /* OnboardingView.swift */,
+				9E78CE607BDE74112CF6C274 /* PhoneVerificationView.swift */,
 				CA9A58F8B6B0D81B7404FC91 /* ProfileView.swift */,
 				DD0B94CB1246452B3FF86CCD /* RoleSelectionView.swift */,
+				AA5888CF87E20959327F1088 /* SettingsView.swift */,
 				244C116E2B6BA5B0A7B76053 /* ShiftDetailView.swift */,
 			);
 			path = Views;
@@ -104,6 +112,7 @@
 			isa = PBXGroup;
 			children = (
 				B8FB632774EEF1A89320CFAA /* AppState.swift */,
+				3930B36B26B370876C1CA684 /* Localization.swift */,
 				7D338FB73AF734A49A62F18B /* LocationService.swift */,
 				5C1EBFEE688FFC116FF701DD /* NotificationService.swift */,
 			);
@@ -153,7 +162,7 @@
 			projectDirPath = "";
 			projectReferences = (
 				{
-					ProductGroup = 0AA0973D2F49E346009D1591 /* Products */;
+					ProductGroup = 0A1B81DA2F4A71D90088E5B6 /* Products */;
 					ProjectRef = B843BB799C8237174C77A4B1 /* QuickGigMVP.xcodeproj */;
 				},
 			);
@@ -185,6 +194,7 @@
 				2657DF99DC16FDF6B6CED59A /* AppState.swift in Sources */,
 				4C9C49CDFCCF5B167EAE2DE1 /* AppStyle.swift in Sources */,
 				70EBCD893F7D97897A2D0DA9 /* ContentView.swift in Sources */,
+				4AA1DFC50DA66FB6C0B9858D /* Localization.swift in Sources */,
 				D8E138E6F4274FB52DCBF900 /* LocationService.swift in Sources */,
 				14FE858DA575E84D14710578 /* LoginView.swift in Sources */,
 				3C7B8A41DA91CA6B9CAB57C1 /* MainMapView.swift in Sources */,
@@ -192,9 +202,11 @@
 				958B2552C665C78997FB643F /* NotificationService.swift in Sources */,
 				B63B10275B08661AC39C9FDA /* NotificationsView.swift in Sources */,
 				192E351C88F8AFEF668A2524 /* OnboardingView.swift in Sources */,
+				60AD63EB932B5E0170BD69FF /* PhoneVerificationView.swift in Sources */,
 				4423740DBD5C313AAA8CB444 /* ProfileView.swift in Sources */,
 				9782F70A69432AD30175FA24 /* QuickGigMVPApp.swift in Sources */,
 				82E98AD661CDBEC1DBEC9266 /* RoleSelectionView.swift in Sources */,
+				E537D03D47507DA9C0BF83E0 /* SettingsView.swift in Sources */,
 				9E7F2BB292951B1A95CF83C8 /* ShiftDetailView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
