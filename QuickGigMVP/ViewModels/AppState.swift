@@ -7,6 +7,8 @@ final class AppState: ObservableObject {
     @Published var users: [AppUser] = []
     @Published var shifts: [JobShift] = []
     @Published var reviews: [Review] = []
+    @Published var applications: [ShiftApplication] = []
+    @Published var authErrorMessage: String?
 
     init() {
         seedData()
@@ -16,21 +18,62 @@ final class AppState: ObservableObject {
         currentUser != nil
     }
 
-    func login(name: String, role: UserRole) {
-        if let existing = users.first(where: { $0.name.lowercased() == name.lowercased() && $0.role == role }) {
-            currentUser = existing
-            return
+    func register(name: String, email: String, password: String, role: UserRole) -> Bool {
+        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        guard !normalizedName.isEmpty else {
+            authErrorMessage = "Введите имя или название компании"
+            return false
         }
 
-        let newUser = AppUser(
+        guard normalizedEmail.contains("@") && normalizedEmail.contains(".") else {
+            authErrorMessage = "Введите корректный email"
+            return false
+        }
+
+        guard password.count >= 6 else {
+            authErrorMessage = "Пароль должен быть минимум 6 символов"
+            return false
+        }
+
+        if users.contains(where: { $0.email.lowercased() == normalizedEmail }) {
+            authErrorMessage = "Пользователь с таким email уже существует"
+            return false
+        }
+
+        let user = AppUser(
             id: UUID(),
-            name: name,
+            name: normalizedName,
+            email: normalizedEmail,
+            password: password,
             role: role,
             rating: 0,
             reviewsCount: 0
         )
-        users.append(newUser)
-        currentUser = newUser
+
+        users.append(user)
+        currentUser = user
+        authErrorMessage = nil
+        return true
+    }
+
+    func login(email: String, password: String) -> Bool {
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        guard let user = users.first(where: { $0.email.lowercased() == normalizedEmail }) else {
+            authErrorMessage = "Пользователь не найден"
+            return false
+        }
+
+        guard user.password == password else {
+            authErrorMessage = "Неверный пароль"
+            return false
+        }
+
+        currentUser = user
+        authErrorMessage = nil
+        return true
     }
 
     func logout() {
@@ -54,8 +97,52 @@ final class AppState: ObservableObject {
         )
     }
 
+    func apply(to shiftId: UUID) {
+        guard let currentUser, currentUser.role == .worker else { return }
+        guard !applications.contains(where: { $0.shiftId == shiftId && $0.workerId == currentUser.id }) else { return }
+
+        applications.append(
+            ShiftApplication(
+                id: UUID(),
+                shiftId: shiftId,
+                workerId: currentUser.id,
+                status: .pending,
+                createdAt: Date()
+            )
+        )
+    }
+
+    func updateApplicationStatus(applicationId: UUID, status: ApplicationStatus) {
+        guard let index = applications.firstIndex(where: { $0.id == applicationId }) else { return }
+        applications[index].status = status
+    }
+
+    func application(for shiftId: UUID, workerId: UUID) -> ShiftApplication? {
+        applications.first(where: { $0.shiftId == shiftId && $0.workerId == workerId })
+    }
+
+    func applications(for shiftId: UUID) -> [ShiftApplication] {
+        applications
+            .filter { $0.shiftId == shiftId }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func applicationsForCurrentWorker() -> [ShiftApplication] {
+        guard let currentUser else { return [] }
+        return applications
+            .filter { $0.workerId == currentUser.id }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func shiftsForCurrentEmployer() -> [JobShift] {
+        guard let currentUser else { return [] }
+        return shifts
+            .filter { $0.employerId == currentUser.id }
+            .sorted { $0.startDate < $1.startDate }
+    }
+
     func addReview(to userId: UUID, stars: Int, comment: String) {
-        guard let currentUser else { return }
+        guard let currentUser, currentUser.id != userId else { return }
 
         let clampedStars = min(5, max(1, stars))
         reviews.append(
@@ -64,7 +151,7 @@ final class AppState: ObservableObject {
                 fromUserId: currentUser.id,
                 toUserId: userId,
                 stars: clampedStars,
-                comment: comment,
+                comment: comment.trimmingCharacters(in: .whitespacesAndNewlines),
                 date: Date()
             )
         )
@@ -73,6 +160,10 @@ final class AppState: ObservableObject {
 
     func user(by id: UUID) -> AppUser? {
         users.first(where: { $0.id == id })
+    }
+
+    func shift(by id: UUID) -> JobShift? {
+        shifts.first(where: { $0.id == id })
     }
 
     func reviews(for userId: UUID) -> [Review] {
@@ -96,23 +187,47 @@ final class AppState: ObservableObject {
     }
 
     private func seedData() {
-        let employer = AppUser(
+        let employer1 = AppUser(
             id: UUID(),
             name: "Cafe Central",
+            email: "cafe@quickgig.app",
+            password: "123456",
             role: .employer,
-            rating: 4.7,
-            reviewsCount: 3
+            rating: 0,
+            reviewsCount: 0
         )
 
-        let worker = AppUser(
+        let employer2 = AppUser(
             id: UUID(),
-            name: "Alex",
-            role: .worker,
-            rating: 4.5,
-            reviewsCount: 2
+            name: "Logistics Hub",
+            email: "logistics@quickgig.app",
+            password: "123456",
+            role: .employer,
+            rating: 0,
+            reviewsCount: 0
         )
 
-        users = [employer, worker]
+        let worker1 = AppUser(
+            id: UUID(),
+            name: "Alex Ivanov",
+            email: "alex@quickgig.app",
+            password: "123456",
+            role: .worker,
+            rating: 0,
+            reviewsCount: 0
+        )
+
+        let worker2 = AppUser(
+            id: UUID(),
+            name: "Nina Petrova",
+            email: "nina@quickgig.app",
+            password: "123456",
+            role: .worker,
+            rating: 0,
+            reviewsCount: 0
+        )
+
+        users = [employer1, employer2, worker1, worker2]
 
         let calendar = Calendar.current
         let now = Date()
@@ -122,37 +237,90 @@ final class AppState: ObservableObject {
         let start2 = calendar.date(byAdding: .day, value: 2, to: now) ?? now
         let end2 = calendar.date(byAdding: .hour, value: 6, to: start2) ?? start2
 
-        shifts = [
-            JobShift(
-                id: UUID(),
-                title: "Бариста на смену",
-                details: "Помощь в утренний час пик",
-                pay: 120,
-                startDate: start1,
-                endDate: end1,
-                coordinate: CLLocationCoordinate2D(latitude: 55.7522, longitude: 37.6156),
-                employerId: employer.id
-            ),
-            JobShift(
-                id: UUID(),
-                title: "Погрузка товара",
-                details: "Склад, физическая работа",
-                pay: 140,
-                startDate: start2,
-                endDate: end2,
-                coordinate: CLLocationCoordinate2D(latitude: 55.7613, longitude: 37.6231),
-                employerId: employer.id
-            )
-        ]
+        let start3 = calendar.date(byAdding: .day, value: 3, to: now) ?? now
+        let end3 = calendar.date(byAdding: .hour, value: 10, to: start3) ?? start3
+
+        let shift1 = JobShift(
+            id: UUID(),
+            title: "Бариста на утро",
+            details: "Нужна помощь с 08:00 до 16:00, опыт приветствуется",
+            pay: 120,
+            startDate: start1,
+            endDate: end1,
+            coordinate: CLLocationCoordinate2D(latitude: 55.7522, longitude: 37.6156),
+            employerId: employer1.id
+        )
+
+        let shift2 = JobShift(
+            id: UUID(),
+            title: "Погрузка товара",
+            details: "Склад, смена на 6 часов, перерывы включены",
+            pay: 140,
+            startDate: start2,
+            endDate: end2,
+            coordinate: CLLocationCoordinate2D(latitude: 55.7613, longitude: 37.6231),
+            employerId: employer2.id
+        )
+
+        let shift3 = JobShift(
+            id: UUID(),
+            title: "Промо у ТЦ",
+            details: "Раздача листовок, коммуникация с клиентами",
+            pay: 110,
+            startDate: start3,
+            endDate: end3,
+            coordinate: CLLocationCoordinate2D(latitude: 55.7488, longitude: 37.6057),
+            employerId: employer1.id
+        )
+
+        shifts = [shift1, shift2, shift3]
 
         reviews = [
             Review(
                 id: UUID(),
-                fromUserId: worker.id,
-                toUserId: employer.id,
+                fromUserId: worker1.id,
+                toUserId: employer1.id,
                 stars: 5,
-                comment: "Честная оплата, понятная задача",
+                comment: "Все четко и вовремя оплатили",
                 date: now
+            ),
+            Review(
+                id: UUID(),
+                fromUserId: employer1.id,
+                toUserId: worker1.id,
+                stars: 5,
+                comment: "Ответственный и пунктуальный",
+                date: now
+            ),
+            Review(
+                id: UUID(),
+                fromUserId: worker2.id,
+                toUserId: employer2.id,
+                stars: 4,
+                comment: "Задача понятная, но много физической нагрузки",
+                date: now
+            )
+        ]
+
+        recalculateRating(for: employer1.id)
+        recalculateRating(for: employer2.id)
+        recalculateRating(for: worker1.id)
+        recalculateRating(for: worker2.id)
+
+        applications = [
+            ShiftApplication(
+                id: UUID(),
+                shiftId: shift1.id,
+                workerId: worker1.id,
+                status: .accepted,
+                createdAt: now
+            ),
+            ShiftApplication(
+                id: UUID(),
+                shiftId: shift2.id,
+                workerId: worker2.id,
+                status: .pending,
+                createdAt: now
             )
         ]
     }

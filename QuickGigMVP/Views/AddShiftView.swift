@@ -20,8 +20,9 @@ struct AddShiftView: View {
             Form {
                 Section("Описание") {
                     TextField("Название подработки", text: $title)
-                    TextField("Краткое описание", text: $details)
-                    Stepper("Оплата: $\(pay)/ч", value: $pay, in: 1...1000)
+                    TextField("Краткое описание", text: $details, axis: .vertical)
+                        .lineLimit(3, reservesSpace: true)
+                    Stepper("Оплата: $\(pay)/ч", value: $pay, in: 50...1000, step: 10)
                 }
 
                 Section("Время") {
@@ -34,7 +35,7 @@ struct AddShiftView: View {
                         .keyboardType(.decimalPad)
                     TextField("Долгота", text: $longitude)
                         .keyboardType(.decimalPad)
-                    Text("Пусто = центр карты")
+                    Text("Пустые поля = центр Москвы")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -42,20 +43,17 @@ struct AddShiftView: View {
             .navigationTitle("Новая смена")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Отмена") {
-                        dismiss()
-                    }
+                    Button("Отмена") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Сохранить") {
-                        let coordinate = parsedCoordinate ?? centerCoordinate
                         appState.addShift(
                             title: title.isEmpty ? "Без названия" : title,
                             details: details,
                             pay: pay,
                             startDate: startDate,
                             endDate: max(endDate, startDate),
-                            coordinate: coordinate
+                            coordinate: parsedCoordinate ?? centerCoordinate
                         )
                         dismiss()
                     }

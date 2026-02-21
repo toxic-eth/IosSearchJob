@@ -17,12 +17,39 @@ enum UserRole: String, CaseIterable, Identifiable {
     }
 }
 
+enum ApplicationStatus: String, CaseIterable, Identifiable {
+    case pending
+    case accepted
+    case rejected
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .pending:
+            return "Ожидает"
+        case .accepted:
+            return "Принят"
+        case .rejected:
+            return "Отклонен"
+        }
+    }
+}
+
 struct AppUser: Identifiable {
     let id: UUID
     var name: String
+    var email: String
+    var password: String
     var role: UserRole
     var rating: Double
     var reviewsCount: Int
+
+    var initials: String {
+        let pieces = name.split(separator: " ")
+        let letters = pieces.prefix(2).compactMap { $0.first }
+        return letters.isEmpty ? "U" : String(letters)
+    }
 }
 
 struct JobShift: Identifiable {
@@ -39,6 +66,14 @@ struct JobShift: Identifiable {
         let seconds = endDate.timeIntervalSince(startDate)
         return max(1, Int(seconds / 3600))
     }
+}
+
+struct ShiftApplication: Identifiable {
+    let id: UUID
+    let shiftId: UUID
+    let workerId: UUID
+    var status: ApplicationStatus
+    let createdAt: Date
 }
 
 struct Review: Identifiable {
