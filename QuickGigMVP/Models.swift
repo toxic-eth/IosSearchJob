@@ -17,6 +17,22 @@ enum UserRole: String, CaseIterable, Identifiable {
     }
 }
 
+enum ShiftStatus: String, CaseIterable, Identifiable {
+    case open
+    case closed
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .open:
+            return "Открыта"
+        case .closed:
+            return "Закрыта"
+        }
+    }
+}
+
 enum ApplicationStatus: String, CaseIterable, Identifiable {
     case pending
     case accepted
@@ -61,6 +77,8 @@ struct JobShift: Identifiable {
     var endDate: Date
     var coordinate: CLLocationCoordinate2D
     var employerId: UUID
+    var requiredWorkers: Int
+    var status: ShiftStatus
 
     var durationHours: Int {
         let seconds = endDate.timeIntervalSince(startDate)

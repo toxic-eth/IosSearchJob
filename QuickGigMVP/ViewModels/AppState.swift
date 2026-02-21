@@ -9,6 +9,7 @@ final class AppState: ObservableObject {
     @Published var reviews: [Review] = []
     @Published var applications: [ShiftApplication] = []
     @Published var authErrorMessage: String?
+    @Published private(set) var shouldRequestLocationPermission = false
 
     init() {
         seedData()
@@ -16,6 +17,12 @@ final class AppState: ObservableObject {
 
     var isLoggedIn: Bool {
         currentUser != nil
+    }
+
+    func consumeLocationPermissionRequest() -> Bool {
+        guard shouldRequestLocationPermission else { return false }
+        shouldRequestLocationPermission = false
+        return true
     }
 
     func register(name: String, email: String, password: String, role: UserRole) -> Bool {
@@ -54,11 +61,12 @@ final class AppState: ObservableObject {
 
         users.append(user)
         currentUser = user
+        shouldRequestLocationPermission = true
         authErrorMessage = nil
         return true
     }
 
-    func login(email: String, password: String) -> Bool {
+    func login(email: String, password: String, expectedRole: UserRole? = nil) -> Bool {
         let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
         guard let user = users.first(where: { $0.email.lowercased() == normalizedEmail }) else {
@@ -71,17 +79,27 @@ final class AppState: ObservableObject {
             return false
         }
 
+        if let expectedRole, user.role != expectedRole {
+            authErrorMessage = expectedRole == .worker
+                ? "Этот аккаунт зарегистрирован как работодатель"
+                : "Этот аккаунт зарегистрирован как работник"
+            return false
+        }
+
         currentUser = user
+        shouldRequestLocationPermission = false
         authErrorMessage = nil
         return true
     }
 
     func logout() {
         currentUser = nil
+        shouldRequestLocationPermission = false
     }
 
-    func addShift(title: String, details: String, pay: Int, startDate: Date, endDate: Date, coordinate: CLLocationCoordinate2D) {
+    func addShift(title: String, details: String, pay: Int, startDate: Date, endDate: Date, coordinate: CLLocationCoordinate2D, requiredWorkers: Int) {
         guard let currentUser, currentUser.role == .employer else { return }
+        let finalCoordinate = UkraineRegion.contains(coordinate) ? coordinate : UkraineRegion.center
 
         shifts.append(
             JobShift(
@@ -91,14 +109,17 @@ final class AppState: ObservableObject {
                 pay: pay,
                 startDate: startDate,
                 endDate: endDate,
-                coordinate: coordinate,
-                employerId: currentUser.id
+                coordinate: finalCoordinate,
+                employerId: currentUser.id,
+                requiredWorkers: max(1, requiredWorkers),
+                status: .open
             )
         )
     }
 
     func apply(to shiftId: UUID) {
         guard let currentUser, currentUser.role == .worker else { return }
+        guard let shift = shift(by: shiftId), shift.status == .open, !isShiftFull(shift) else { return }
         guard !applications.contains(where: { $0.shiftId == shiftId && $0.workerId == currentUser.id }) else { return }
 
         applications.append(
@@ -114,7 +135,17 @@ final class AppState: ObservableObject {
 
     func updateApplicationStatus(applicationId: UUID, status: ApplicationStatus) {
         guard let index = applications.firstIndex(where: { $0.id == applicationId }) else { return }
+
+        let shiftId = applications[index].shiftId
+        if status == .accepted,
+           let shift = shift(by: shiftId),
+           acceptedApplicationsCount(for: shift.id) >= shift.requiredWorkers,
+           applications[index].status != .accepted {
+            return
+        }
+
         applications[index].status = status
+        syncShiftCapacity(for: shiftId)
     }
 
     func application(for shiftId: UUID, workerId: UUID) -> ShiftApplication? {
@@ -134,11 +165,44 @@ final class AppState: ObservableObject {
             .sorted { $0.createdAt > $1.createdAt }
     }
 
+    func acceptedShiftsForCurrentWorker() -> [JobShift] {
+        guard let currentUser else { return [] }
+
+        let acceptedIds = applications
+            .filter { $0.workerId == currentUser.id && $0.status == .accepted }
+            .map(\.shiftId)
+
+        return shifts
+            .filter { acceptedIds.contains($0.id) }
+            .sorted { $0.startDate < $1.startDate }
+    }
+
+    func projectedEarningsForCurrentWorker() -> Int {
+        acceptedShiftsForCurrentWorker()
+            .filter { $0.startDate >= Date() }
+            .map { $0.pay * $0.durationHours }
+            .reduce(0, +)
+    }
+
     func shiftsForCurrentEmployer() -> [JobShift] {
         guard let currentUser else { return [] }
         return shifts
             .filter { $0.employerId == currentUser.id }
             .sorted { $0.startDate < $1.startDate }
+    }
+
+    func payrollForecastForCurrentEmployer() -> Int {
+        shiftsForCurrentEmployer()
+            .map { shift in shift.pay * shift.durationHours * acceptedApplicationsCount(for: shift.id) }
+            .reduce(0, +)
+    }
+
+    func acceptedApplicationsCount(for shiftId: UUID) -> Int {
+        applications.filter { $0.shiftId == shiftId && $0.status == .accepted }.count
+    }
+
+    func isShiftFull(_ shift: JobShift) -> Bool {
+        acceptedApplicationsCount(for: shift.id) >= shift.requiredWorkers
     }
 
     func addReview(to userId: UUID, stars: Int, comment: String) {
@@ -170,6 +234,20 @@ final class AppState: ObservableObject {
         reviews
             .filter { $0.toUserId == userId }
             .sorted { $0.date > $1.date }
+    }
+
+    private func syncShiftCapacity(for shiftId: UUID) {
+        guard let shiftIndex = shifts.firstIndex(where: { $0.id == shiftId }) else { return }
+
+        if acceptedApplicationsCount(for: shiftId) >= shifts[shiftIndex].requiredWorkers {
+            shifts[shiftIndex].status = .closed
+
+            for idx in applications.indices where applications[idx].shiftId == shiftId && applications[idx].status == .pending {
+                applications[idx].status = .rejected
+            }
+        } else {
+            shifts[shiftIndex].status = .open
+        }
     }
 
     private func recalculateRating(for userId: UUID) {
@@ -247,8 +325,10 @@ final class AppState: ObservableObject {
             pay: 120,
             startDate: start1,
             endDate: end1,
-            coordinate: CLLocationCoordinate2D(latitude: 55.7522, longitude: 37.6156),
-            employerId: employer1.id
+            coordinate: CLLocationCoordinate2D(latitude: 50.4501, longitude: 30.5234),
+            employerId: employer1.id,
+            requiredWorkers: 2,
+            status: .open
         )
 
         let shift2 = JobShift(
@@ -258,8 +338,10 @@ final class AppState: ObservableObject {
             pay: 140,
             startDate: start2,
             endDate: end2,
-            coordinate: CLLocationCoordinate2D(latitude: 55.7613, longitude: 37.6231),
-            employerId: employer2.id
+            coordinate: CLLocationCoordinate2D(latitude: 49.8397, longitude: 24.0297),
+            employerId: employer2.id,
+            requiredWorkers: 1,
+            status: .open
         )
 
         let shift3 = JobShift(
@@ -269,8 +351,10 @@ final class AppState: ObservableObject {
             pay: 110,
             startDate: start3,
             endDate: end3,
-            coordinate: CLLocationCoordinate2D(latitude: 55.7488, longitude: 37.6057),
-            employerId: employer1.id
+            coordinate: CLLocationCoordinate2D(latitude: 46.4825, longitude: 30.7233),
+            employerId: employer1.id,
+            requiredWorkers: 3,
+            status: .open
         )
 
         shifts = [shift1, shift2, shift3]
@@ -323,5 +407,9 @@ final class AppState: ObservableObject {
                 createdAt: now
             )
         ]
+
+        syncShiftCapacity(for: shift1.id)
+        syncShiftCapacity(for: shift2.id)
+        syncShiftCapacity(for: shift3.id)
     }
 }

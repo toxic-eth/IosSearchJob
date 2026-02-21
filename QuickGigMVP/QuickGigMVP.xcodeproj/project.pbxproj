@@ -9,15 +9,18 @@
 /* Begin PBXBuildFile section */
 		1130B69C944F691495C09DB6 /* QuickGigMVP.xcodeproj in Resources */ = {isa = PBXBuildFile; fileRef = B843BB799C8237174C77A4B1 /* QuickGigMVP.xcodeproj */; };
 		14FE858DA575E84D14710578 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB082A05800D8CDB8653AB7 /* LoginView.swift */; };
+		192E351C88F8AFEF668A2524 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03136F2C8400F1F5442BE0A /* OnboardingView.swift */; };
 		2657DF99DC16FDF6B6CED59A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8FB632774EEF1A89320CFAA /* AppState.swift */; };
 		3C7B8A41DA91CA6B9CAB57C1 /* MainMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 249336023E0F0D2D4E911C04 /* MainMapView.swift */; };
 		4423740DBD5C313AAA8CB444 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA9A58F8B6B0D81B7404FC91 /* ProfileView.swift */; };
 		70EBCD893F7D97897A2D0DA9 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C894EB9ABD4D9A6AC1BA1772 /* ContentView.swift */; };
 		7A9A479987ED066C6882343C /* ActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F59D843B932A45A53FDB3A9 /* ActivityView.swift */; };
+		82E98AD661CDBEC1DBEC9266 /* RoleSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD0B94CB1246452B3FF86CCD /* RoleSelectionView.swift */; };
 		9782F70A69432AD30175FA24 /* QuickGigMVPApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D658184857A76782E43B728C /* QuickGigMVPApp.swift */; };
 		9E7F2BB292951B1A95CF83C8 /* ShiftDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 244C116E2B6BA5B0A7B76053 /* ShiftDetailView.swift */; };
 		AFDB0521A62351AA456AFD8F /* AddShiftView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59DD79D2835116A42471AB3C /* AddShiftView.swift */; };
 		C99D8860706C373538D484BD /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F254DCDF256DAF3C54F5B6E /* Models.swift */; };
+		D8E138E6F4274FB52DCBF900 /* LocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D338FB73AF734A49A62F18B /* LocationService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -26,17 +29,20 @@
 		3F254DCDF256DAF3C54F5B6E /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		3F59D843B932A45A53FDB3A9 /* ActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityView.swift; sourceTree = "<group>"; };
 		59DD79D2835116A42471AB3C /* AddShiftView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddShiftView.swift; sourceTree = "<group>"; };
+		7D338FB73AF734A49A62F18B /* LocationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationService.swift; sourceTree = "<group>"; };
 		B843BB799C8237174C77A4B1 /* QuickGigMVP.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = QuickGigMVP.xcodeproj; sourceTree = "<group>"; };
 		B8FB632774EEF1A89320CFAA /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		C03136F2C8400F1F5442BE0A /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		C894EB9ABD4D9A6AC1BA1772 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		CA9A58F8B6B0D81B7404FC91 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		D658184857A76782E43B728C /* QuickGigMVPApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickGigMVPApp.swift; sourceTree = "<group>"; };
 		DAB082A05800D8CDB8653AB7 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		DD0B94CB1246452B3FF86CCD /* RoleSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoleSelectionView.swift; sourceTree = "<group>"; };
 		F478A1B9B3F2A2FA8B03D049 /* QuickGigMVP.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = QuickGigMVP.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
-		0ACD1B1B2F4937B400DEF2A0 /* Products */ = {
+		0ACD1B232F4942F900DEF2A0 /* Products */ = {
 			isa = PBXGroup;
 			name = Products;
 			sourceTree = "<group>";
@@ -66,7 +72,9 @@
 				59DD79D2835116A42471AB3C /* AddShiftView.swift */,
 				DAB082A05800D8CDB8653AB7 /* LoginView.swift */,
 				249336023E0F0D2D4E911C04 /* MainMapView.swift */,
+				C03136F2C8400F1F5442BE0A /* OnboardingView.swift */,
 				CA9A58F8B6B0D81B7404FC91 /* ProfileView.swift */,
+				DD0B94CB1246452B3FF86CCD /* RoleSelectionView.swift */,
 				244C116E2B6BA5B0A7B76053 /* ShiftDetailView.swift */,
 			);
 			path = Views;
@@ -88,6 +96,7 @@
 			isa = PBXGroup;
 			children = (
 				B8FB632774EEF1A89320CFAA /* AppState.swift */,
+				7D338FB73AF734A49A62F18B /* LocationService.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -135,7 +144,7 @@
 			projectDirPath = "";
 			projectReferences = (
 				{
-					ProductGroup = 0ACD1B1B2F4937B400DEF2A0 /* Products */;
+					ProductGroup = 0ACD1B232F4942F900DEF2A0 /* Products */;
 					ProjectRef = B843BB799C8237174C77A4B1 /* QuickGigMVP.xcodeproj */;
 				},
 			);
@@ -166,11 +175,14 @@
 				AFDB0521A62351AA456AFD8F /* AddShiftView.swift in Sources */,
 				2657DF99DC16FDF6B6CED59A /* AppState.swift in Sources */,
 				70EBCD893F7D97897A2D0DA9 /* ContentView.swift in Sources */,
+				D8E138E6F4274FB52DCBF900 /* LocationService.swift in Sources */,
 				14FE858DA575E84D14710578 /* LoginView.swift in Sources */,
 				3C7B8A41DA91CA6B9CAB57C1 /* MainMapView.swift in Sources */,
 				C99D8860706C373538D484BD /* Models.swift in Sources */,
+				192E351C88F8AFEF668A2524 /* OnboardingView.swift in Sources */,
 				4423740DBD5C313AAA8CB444 /* ProfileView.swift in Sources */,
 				9782F70A69432AD30175FA24 /* QuickGigMVPApp.swift in Sources */,
+				82E98AD661CDBEC1DBEC9266 /* RoleSelectionView.swift in Sources */,
 				9E7F2BB292951B1A95CF83C8 /* ShiftDetailView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -302,6 +314,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "QuickGig MVP";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Мы используем геолокацию, чтобы показать подработку в вашем регионе Украины.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -322,6 +335,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "QuickGig MVP";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Мы используем геолокацию, чтобы показать подработку в вашем регионе Украины.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;

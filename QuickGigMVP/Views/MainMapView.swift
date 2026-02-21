@@ -3,6 +3,7 @@ import MapKit
 
 struct MainMapView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var locationService: LocationService
 
     @State private var searchText = ""
     @State private var minPay: Double = 80
@@ -12,17 +13,23 @@ struct MainMapView: View {
 
     @State private var cameraPosition: MapCameraPosition = .region(
         MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 55.7558, longitude: 37.6173),
-            span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.08)
+            center: UkraineRegion.center,
+            span: MKCoordinateSpan(latitudeDelta: 6.0, longitudeDelta: 8.0)
         )
     )
 
     private var filteredShifts: [JobShift] {
-        appState.shifts
+        let role = appState.currentUser?.role
+
+        return appState.shifts
             .filter { shift in
-                Double(shift.pay) >= minPay &&
-                Double(shift.durationHours) <= maxDuration &&
-                (searchText.isEmpty || shift.title.localizedCaseInsensitiveContains(searchText) || shift.details.localizedCaseInsensitiveContains(searchText))
+                let visibleByStatus = role == .worker ? shift.status == .open : true
+
+                return UkraineRegion.contains(shift.coordinate) &&
+                    visibleByStatus &&
+                    Double(shift.pay) >= minPay &&
+                    Double(shift.durationHours) <= maxDuration &&
+                    (searchText.isEmpty || shift.title.localizedCaseInsensitiveContains(searchText) || shift.details.localizedCaseInsensitiveContains(searchText))
             }
             .sorted { $0.startDate < $1.startDate }
     }
@@ -38,47 +45,13 @@ struct MainMapView: View {
                     VStack(spacing: 14) {
                         summaryCard
                         filtersBlock
-
-                        Map(position: $cameraPosition) {
-                            ForEach(filteredShifts) { shift in
-                                Annotation(shift.title, coordinate: shift.coordinate) {
-                                    Button {
-                                        selectedShift = shift
-                                    } label: {
-                                        VStack(spacing: 3) {
-                                            Image(systemName: "mappin.circle.fill")
-                                                .font(.title2)
-                                                .foregroundStyle(.red)
-                                            Text("$\(shift.pay)/ч")
-                                                .font(.caption2.bold())
-                                                .padding(.horizontal, 6)
-                                                .padding(.vertical, 2)
-                                                .background(.thickMaterial)
-                                                .clipShape(Capsule())
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        .frame(height: 320)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                        )
-
-                        LazyVStack(spacing: 10) {
-                            ForEach(filteredShifts) { shift in
-                                ShiftRow(shift: shift, employer: appState.user(by: shift.employerId)) {
-                                    selectedShift = shift
-                                }
-                            }
-                        }
+                        mapSection
+                        shiftListSection
                     }
                     .padding(.horizontal)
                     .padding(.bottom, 16)
                 }
-                .navigationTitle("Смены на карте")
+                .navigationTitle("Смены по Украине")
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("Выйти") { appState.logout() }
@@ -95,8 +68,17 @@ struct MainMapView: View {
                         .environmentObject(appState)
                 }
                 .sheet(isPresented: $showCreateShift) {
-                    AddShiftView(centerCoordinate: CLLocationCoordinate2D(latitude: 55.7558, longitude: 37.6173))
+                    AddShiftView(centerCoordinate: UkraineRegion.center)
                         .environmentObject(appState)
+                }
+                .onAppear {
+                    if appState.consumeLocationPermissionRequest() {
+                        locationService.requestPermission()
+                    }
+                    updateRegionIfNeeded()
+                }
+                .onReceive(locationService.$currentLocation) { _ in
+                    updateRegionIfNeeded()
                 }
             }
             .tabItem {
@@ -115,6 +97,53 @@ struct MainMapView: View {
         }
     }
 
+    private var mapSection: some View {
+        Map(position: $cameraPosition) {
+            ForEach(filteredShifts) { shift in
+                Annotation(shift.title, coordinate: shift.coordinate) {
+                    Button {
+                        selectedShift = shift
+                    } label: {
+                        ShiftPinView(pay: shift.pay)
+                    }
+                }
+            }
+        }
+        .frame(height: 320)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    private var shiftListSection: some View {
+        LazyVStack(spacing: 10) {
+            ForEach(filteredShifts) { shift in
+                ShiftRow(
+                    shift: shift,
+                    employer: appState.user(by: shift.employerId),
+                    accepted: appState.acceptedApplicationsCount(for: shift.id)
+                ) {
+                    selectedShift = shift
+                }
+            }
+        }
+    }
+
+    private func updateRegionIfNeeded() {
+        guard let userLocation = locationService.currentLocation, UkraineRegion.contains(userLocation) else {
+            return
+        }
+
+        cameraPosition = .region(
+            MKCoordinateRegion(
+                center: userLocation,
+                span: MKCoordinateSpan(latitudeDelta: 0.35, longitudeDelta: 0.35)
+            )
+        )
+    }
+
     private var summaryCard: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Сегодня доступно")
@@ -122,7 +151,7 @@ struct MainMapView: View {
                 .foregroundStyle(.secondary)
             Text("\(upcomingCount) смен")
                 .font(.title2.bold())
-            Text("Фильтруйте по оплате, длительности и открывайте детали на карте")
+            Text("Новый апдейт: смены теперь с лимитом мест, автозакрытием и прозрачным набором.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -152,24 +181,55 @@ struct MainMapView: View {
     }
 }
 
+private struct ShiftPinView: View {
+    let pay: Int
+
+    var body: some View {
+        VStack(spacing: 3) {
+            Image(systemName: "mappin.circle.fill")
+                .font(.title2)
+                .foregroundStyle(.red)
+            Text("$\(pay)/ч")
+                .font(.caption2.bold())
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(.thickMaterial)
+                .clipShape(Capsule())
+        }
+    }
+}
+
 private struct ShiftRow: View {
     let shift: JobShift
     let employer: AppUser?
+    let accepted: Int
     let onTap: () -> Void
 
     var body: some View {
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(shift.title)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
+                HStack {
+                    Text(shift.title)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Text(shift.status.title)
+                        .font(.caption.bold())
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(shift.status == .open ? Color.blue.opacity(0.15) : Color.gray.opacity(0.2))
+                        .clipShape(Capsule())
+                }
+
                 Text(shift.details)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+
                 HStack {
                     Label("$\(shift.pay)/ч", systemImage: "dollarsign.circle")
                     Label("\(shift.durationHours) ч", systemImage: "clock")
+                    Label("\(accepted)/\(shift.requiredWorkers)", systemImage: "person.3")
                     if let employer {
                         Label(employer.name, systemImage: "building.2")
                             .lineLimit(1)

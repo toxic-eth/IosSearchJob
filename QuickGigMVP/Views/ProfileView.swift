@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ProfileView: View {
     @EnvironmentObject private var appState: AppState
+    @AppStorage("preferredRole") private var preferredRoleRawValue = ""
 
     @State private var selectedUserId: UUID?
     @State private var stars = 5
@@ -71,6 +72,14 @@ struct ProfileView: View {
                                 }
                             }
                         }
+                    }
+
+                    Section("Аккаунт") {
+                        Button("Сменить тип аккаунта") {
+                            preferredRoleRawValue = ""
+                            appState.logout()
+                        }
+                        .foregroundStyle(.orange)
                     }
                 }
             }

@@ -19,12 +19,14 @@ private enum AuthMode: String, CaseIterable, Identifiable {
 struct LoginView: View {
     @EnvironmentObject private var appState: AppState
 
+    let selectedRole: UserRole
+    let onResetRole: () -> Void
+
     @State private var mode: AuthMode = .login
     @State private var name = ""
     @State private var email = ""
     @State private var password = ""
     @State private var confirmPassword = ""
-    @State private var selectedRole: UserRole = .worker
 
     var body: some View {
         NavigationStack {
@@ -38,17 +40,9 @@ struct LoginView: View {
 
                 ScrollView {
                     VStack(spacing: 18) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("QuickGig")
-                                .font(.largeTitle.bold())
-                            Text("Подработка на день или неделю. Откликайтесь, нанимайте, оценивайте.")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal)
+                        header
 
-                        VStack(spacing: 16) {
+                        VStack(spacing: 14) {
                             Picker("Режим", selection: $mode) {
                                 ForEach(AuthMode.allCases) { item in
                                     Text(item.title).tag(item)
@@ -57,28 +51,26 @@ struct LoginView: View {
                             .pickerStyle(.segmented)
 
                             if mode == .register {
-                                TextField("Имя или компания", text: $name)
+                                TextField(namePlaceholder, text: $name)
                                     .textFieldStyle(.roundedBorder)
                             }
 
-                            TextField("Email", text: $email)
+                            TextField(emailPlaceholder, text: $email)
                                 .textInputAutocapitalization(.never)
                                 .keyboardType(.emailAddress)
+                                .autocorrectionDisabled(true)
                                 .textFieldStyle(.roundedBorder)
 
-                            SecureField("Пароль", text: $password)
-                                .textFieldStyle(.roundedBorder)
+                            PasswordInputField(
+                                title: "Пароль",
+                                text: $password
+                            )
 
                             if mode == .register {
-                                SecureField("Повторите пароль", text: $confirmPassword)
-                                    .textFieldStyle(.roundedBorder)
-
-                                Picker("Роль", selection: $selectedRole) {
-                                    ForEach(UserRole.allCases) { role in
-                                        Text(role.title).tag(role)
-                                    }
-                                }
-                                .pickerStyle(.segmented)
+                                PasswordInputField(
+                                    title: "Повторите пароль",
+                                    text: $confirmPassword
+                                )
                             }
 
                             if let error = appState.authErrorMessage {
@@ -94,7 +86,10 @@ struct LoginView: View {
                             .buttonStyle(.borderedProminent)
                             .frame(maxWidth: .infinity)
 
-                            demoAccounts
+                            Button(changeRoleTitle) {
+                                onResetRole()
+                            }
+                            .font(.footnote)
                         }
                         .padding(20)
                         .background(.regularMaterial)
@@ -108,23 +103,41 @@ struct LoginView: View {
         }
     }
 
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(selectedRole == .worker ? "Ищу подработку" : "Нужны сотрудники")
+                .font(.largeTitle.bold())
+            Text(selectedRole == .worker
+                 ? "Находите смены на карте и откликайтесь за минуту."
+                 : "Размещайте смены и быстро находите исполнителей.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal)
+    }
+
     private var actionTitle: String {
         mode == .login ? "Войти" : "Создать аккаунт"
     }
 
-    private var demoAccounts: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Демо: alex@quickgig.app / 123456")
-            Text("Демо: cafe@quickgig.app / 123456")
-        }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity, alignment: .leading)
+    private var namePlaceholder: String {
+        selectedRole == .worker ? "Имя и фамилия" : "Название компании"
+    }
+
+    private var emailPlaceholder: String {
+        selectedRole == .worker ? "Ваш email" : "Email компании"
+    }
+
+    private var changeRoleTitle: String {
+        selectedRole == .worker
+            ? "Я работодатель"
+            : "Я ищу подработку"
     }
 
     private func submit() {
         if mode == .login {
-            _ = appState.login(email: email, password: password)
+            _ = appState.login(email: email, password: password, expectedRole: selectedRole)
             return
         }
 
@@ -134,5 +147,49 @@ struct LoginView: View {
         }
 
         _ = appState.register(name: name, email: email, password: password, role: selectedRole)
+    }
+}
+
+private struct PasswordInputField: View {
+    let title: String
+    @Binding var text: String
+
+    @State private var isVisible = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Group {
+                if isVisible {
+                    TextField(title, text: $text)
+                } else {
+                    SecureField(title, text: $text)
+                }
+            }
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled(true)
+            .textContentType(.oneTimeCode)
+
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Button {
+                isVisible.toggle()
+            } label: {
+                Image(systemName: isVisible ? "eye.slash.fill" : "eye.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }

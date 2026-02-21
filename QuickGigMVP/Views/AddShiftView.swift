@@ -10,6 +10,7 @@ struct AddShiftView: View {
     @State private var title = ""
     @State private var details = ""
     @State private var pay = 100
+    @State private var requiredWorkers = 1
     @State private var startDate = Date()
     @State private var endDate = Calendar.current.date(byAdding: .hour, value: 8, to: Date()) ?? Date()
     @State private var latitude = ""
@@ -23,6 +24,7 @@ struct AddShiftView: View {
                     TextField("Краткое описание", text: $details, axis: .vertical)
                         .lineLimit(3, reservesSpace: true)
                     Stepper("Оплата: $\(pay)/ч", value: $pay, in: 50...1000, step: 10)
+                    Stepper("Нужно работников: \(requiredWorkers)", value: $requiredWorkers, in: 1...30)
                 }
 
                 Section("Время") {
@@ -35,7 +37,7 @@ struct AddShiftView: View {
                         .keyboardType(.decimalPad)
                     TextField("Долгота", text: $longitude)
                         .keyboardType(.decimalPad)
-                    Text("Пустые поля = центр Москвы")
+                    Text("Если точка вне Украины, автоматически установится Киев")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -53,7 +55,8 @@ struct AddShiftView: View {
                             pay: pay,
                             startDate: startDate,
                             endDate: max(endDate, startDate),
-                            coordinate: parsedCoordinate ?? centerCoordinate
+                            coordinate: parsedCoordinate ?? centerCoordinate,
+                            requiredWorkers: requiredWorkers
                         )
                         dismiss()
                     }

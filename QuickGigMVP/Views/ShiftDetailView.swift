@@ -9,20 +9,38 @@ struct ShiftDetailView: View {
     @State private var stars = 5
     @State private var reviewText = ""
 
+    private var liveShift: JobShift {
+        appState.shift(by: shift.id) ?? shift
+    }
+
     var body: some View {
         NavigationStack {
             Form {
                 Section("Смена") {
-                    Text(shift.title)
+                    Text(liveShift.title)
                         .font(.headline)
-                    Text(shift.details)
-                    Text("Оплата: $\(shift.pay)/ч")
-                    Text("Длительность: \(shift.durationHours) ч")
-                    Text("Дата: \(shift.startDate, style: .date) \(shift.startDate, style: .time)")
+                    Text(liveShift.details)
+                    Text("Оплата: $\(liveShift.pay)/ч")
+                    Text("Длительность: \(liveShift.durationHours) ч")
+                    Text("Дата: \(liveShift.startDate, style: .date) \(liveShift.startDate, style: .time)")
                         .foregroundStyle(.secondary)
+
+                    let accepted = appState.acceptedApplicationsCount(for: liveShift.id)
+                    HStack {
+                        Text("Набор")
+                        Spacer()
+                        Text("\(accepted)/\(liveShift.requiredWorkers)")
+                            .font(.body.bold())
+                    }
+
+                    HStack {
+                        Text("Статус")
+                        Spacer()
+                        ShiftStatusBadge(status: liveShift.status)
+                    }
                 }
 
-                if let employer = appState.user(by: shift.employerId) {
+                if let employer = appState.user(by: liveShift.employerId) {
                     Section("Работодатель") {
                         Text(employer.name)
                         Text("Рейтинг: \(employer.rating, specifier: "%.1f") (\(employer.reviewsCount) отзывов)")
@@ -51,15 +69,18 @@ struct ShiftDetailView: View {
             currentUser.id != employer.id
         {
             Section("Отклик") {
-                if let application = appState.application(for: shift.id, workerId: currentUser.id) {
+                if let application = appState.application(for: liveShift.id, workerId: currentUser.id) {
                     HStack {
                         Text("Статус")
                         Spacer()
                         ApplicationStatusBadge(status: application.status)
                     }
+                } else if liveShift.status == .closed {
+                    Text("Набор завершен. Мест больше нет.")
+                        .foregroundStyle(.secondary)
                 } else {
                     Button("Откликнуться на смену") {
-                        appState.apply(to: shift.id)
+                        appState.apply(to: liveShift.id)
                     }
                     .buttonStyle(.borderedProminent)
                 }
@@ -71,10 +92,10 @@ struct ShiftDetailView: View {
     private var employerActionsIfOwner: some View {
         if
             let currentUser = appState.currentUser,
-            currentUser.id == shift.employerId,
+            currentUser.id == liveShift.employerId,
             currentUser.role == .employer
         {
-            let shiftApplications = appState.applications(for: shift.id)
+            let shiftApplications = appState.applications(for: liveShift.id)
 
             Section("Отклики кандидатов") {
                 if shiftApplications.isEmpty {
@@ -91,7 +112,7 @@ struct ShiftDetailView: View {
                                     ApplicationStatusBadge(status: application.status)
                                 }
 
-                                if application.status == .pending {
+                                if application.status == .pending && liveShift.status == .open {
                                     HStack {
                                         Button("Принять") {
                                             appState.updateApplicationStatus(applicationId: application.id, status: .accepted)
@@ -161,5 +182,19 @@ private struct ApplicationStatusBadge: View {
         case .rejected:
             return .red
         }
+    }
+}
+
+private struct ShiftStatusBadge: View {
+    let status: ShiftStatus
+
+    var body: some View {
+        Text(status.title)
+            .font(.caption.bold())
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(status == .open ? Color.blue.opacity(0.2) : Color.gray.opacity(0.2))
+            .foregroundStyle(status == .open ? Color.blue : Color.gray)
+            .clipShape(Capsule())
     }
 }
