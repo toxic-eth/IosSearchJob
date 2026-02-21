@@ -3,20 +3,52 @@ import Combine
 import CoreLocation
 
 final class AppState: ObservableObject {
+    private let employerResponseSLAHours = 2
+    private let reminderCooldownMinutes = 20
+    private let criticalSLAMinutes = 30
+    private var slaTimerCancellable: AnyCancellable?
+    private var reminderTimestamps: [UUID: Date] = [:]
+
     @Published var currentUser: AppUser?
     @Published var users: [AppUser] = []
     @Published var shifts: [JobShift] = []
     @Published var reviews: [Review] = []
     @Published var applications: [ShiftApplication] = []
+    @Published var notifications: [InAppNotification] = []
     @Published var authErrorMessage: String?
     @Published private(set) var shouldRequestLocationPermission = false
 
     init() {
         seedData()
+        NotificationService.requestAuthorizationIfNeeded()
+        startSLATimer()
     }
 
     var isLoggedIn: Bool {
         currentUser != nil
+    }
+
+    func currentUserNotifications() -> [InAppNotification] {
+        guard let currentUser else { return [] }
+        return notifications
+            .filter { $0.userId == currentUser.id }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func unreadNotificationsCountForCurrentUser() -> Int {
+        currentUserNotifications().filter { !$0.isRead }.count
+    }
+
+    func markNotificationAsRead(_ notificationId: UUID) {
+        guard let index = notifications.firstIndex(where: { $0.id == notificationId }) else { return }
+        notifications[index].isRead = true
+    }
+
+    func markAllNotificationsAsReadForCurrentUser() {
+        guard let currentUser else { return }
+        for index in notifications.indices where notifications[index].userId == currentUser.id {
+            notifications[index].isRead = true
+        }
     }
 
     func consumeLocationPermissionRequest() -> Bool {
@@ -30,22 +62,22 @@ final class AppState: ObservableObject {
         let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
         guard !normalizedName.isEmpty else {
-            authErrorMessage = "Введите имя или название компании"
+            authErrorMessage = "Введіть ім'я або назву компанії"
             return false
         }
 
         guard normalizedEmail.contains("@") && normalizedEmail.contains(".") else {
-            authErrorMessage = "Введите корректный email"
+            authErrorMessage = "Введіть коректний email"
             return false
         }
 
         guard password.count >= 6 else {
-            authErrorMessage = "Пароль должен быть минимум 6 символов"
+            authErrorMessage = "Пароль має містити щонайменше 6 символів"
             return false
         }
 
         if users.contains(where: { $0.email.lowercased() == normalizedEmail }) {
-            authErrorMessage = "Пользователь с таким email уже существует"
+            authErrorMessage = "Користувач з таким email вже існує"
             return false
         }
 
@@ -55,6 +87,7 @@ final class AppState: ObservableObject {
             email: normalizedEmail,
             password: password,
             role: role,
+            isVerifiedEmployer: false,
             rating: 0,
             reviewsCount: 0
         )
@@ -70,19 +103,19 @@ final class AppState: ObservableObject {
         let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
         guard let user = users.first(where: { $0.email.lowercased() == normalizedEmail }) else {
-            authErrorMessage = "Пользователь не найден"
+            authErrorMessage = "Користувача не знайдено"
             return false
         }
 
         guard user.password == password else {
-            authErrorMessage = "Неверный пароль"
+            authErrorMessage = "Неправильний пароль"
             return false
         }
 
         if let expectedRole, user.role != expectedRole {
             authErrorMessage = expectedRole == .worker
-                ? "Этот аккаунт зарегистрирован как работодатель"
-                : "Этот аккаунт зарегистрирован как работник"
+                ? "Цей акаунт зареєстровано як роботодавець"
+                : "Цей акаунт зареєстровано як працівник"
             return false
         }
 
@@ -122,19 +155,36 @@ final class AppState: ObservableObject {
         guard let shift = shift(by: shiftId), shift.status == .open, !isShiftFull(shift) else { return }
         guard !applications.contains(where: { $0.shiftId == shiftId && $0.workerId == currentUser.id }) else { return }
 
+        let createdAt = Date()
         applications.append(
             ShiftApplication(
                 id: UUID(),
                 shiftId: shiftId,
                 workerId: currentUser.id,
                 status: .pending,
-                createdAt: Date()
+                createdAt: createdAt,
+                respondBy: Calendar.current.date(byAdding: .hour, value: employerResponseSLAHours, to: createdAt) ?? createdAt
             )
+        )
+
+        addInAppNotification(
+            for: currentUser.id,
+            title: "Відгук надіслано",
+            message: "Очікуйте рішення роботодавця по зміні «\(shift.title)».",
+            kind: .info
+        )
+
+        addInAppNotification(
+            for: shift.employerId,
+            title: "Новий кандидат",
+            message: "\(currentUser.name) відгукнувся на зміну «\(shift.title)».",
+            kind: .warning
         )
     }
 
     func updateApplicationStatus(applicationId: UUID, status: ApplicationStatus) {
         guard let index = applications.firstIndex(where: { $0.id == applicationId }) else { return }
+        let oldStatus = applications[index].status
 
         let shiftId = applications[index].shiftId
         if status == .accepted,
@@ -145,6 +195,12 @@ final class AppState: ObservableObject {
         }
 
         applications[index].status = status
+        if status != .pending {
+            reminderTimestamps[applications[index].id] = nil
+        }
+        if oldStatus != status {
+            notifyStatusChangeIfNeeded(for: applications[index])
+        }
         syncShiftCapacity(for: shiftId)
     }
 
@@ -205,6 +261,70 @@ final class AppState: ObservableObject {
         acceptedApplicationsCount(for: shift.id) >= shift.requiredWorkers
     }
 
+    func applicationTimeRemainingText(_ application: ShiftApplication, now: Date = Date()) -> String {
+        guard application.status == .pending else { return application.status.title }
+
+        let remaining = Int(application.respondBy.timeIntervalSince(now))
+        if remaining <= 0 {
+            return "Термін відповіді сплив"
+        }
+
+        let hours = remaining / 3600
+        let minutes = (remaining % 3600) / 60
+        if hours > 0 {
+            return "Відповідь до: \(hours) год \(minutes) хв"
+        }
+        return "Відповідь до: \(minutes) хв"
+    }
+
+    func isApplicationSLACritical(_ application: ShiftApplication, now: Date = Date()) -> Bool {
+        guard application.status == .pending else { return false }
+        let minutesLeft = application.respondBy.timeIntervalSince(now) / 60
+        return minutesLeft > 0 && minutesLeft <= Double(criticalSLAMinutes)
+    }
+
+    func canSendReminder(for application: ShiftApplication, now: Date = Date()) -> Bool {
+        guard application.status == .pending else { return false }
+        guard let lastSentAt = reminderTimestamps[application.id] else { return true }
+        return now.timeIntervalSince(lastSentAt) >= Double(reminderCooldownMinutes * 60)
+    }
+
+    func reminderCooldownText(for application: ShiftApplication, now: Date = Date()) -> String? {
+        guard !canSendReminder(for: application, now: now),
+              let lastSentAt = reminderTimestamps[application.id] else { return nil }
+
+        let remaining = Int(Double(reminderCooldownMinutes * 60) - now.timeIntervalSince(lastSentAt))
+        if remaining <= 0 { return nil }
+        let minutes = max(1, remaining / 60)
+        return "Повторне нагадування через \(minutes) хв"
+    }
+
+    func remindEmployer(for applicationId: UUID) {
+        guard let application = applications.first(where: { $0.id == applicationId }),
+              let worker = currentUser,
+              worker.role == .worker,
+              worker.id == application.workerId,
+              application.status == .pending,
+              canSendReminder(for: application),
+              let shift = shift(by: application.shiftId) else { return }
+
+        reminderTimestamps[application.id] = Date()
+
+        addInAppNotification(
+            for: shift.employerId,
+            title: "Нагадування від кандидата",
+            message: "\(worker.name) просить пришвидшити рішення по зміні «\(shift.title)».",
+            kind: .warning
+        )
+
+        addInAppNotification(
+            for: worker.id,
+            title: "Нагадування надіслано",
+            message: "Роботодавець отримав нагадування по зміні «\(shift.title)».",
+            kind: .success
+        )
+    }
+
     func addReview(to userId: UUID, stars: Int, comment: String) {
         guard let currentUser, currentUser.id != userId else { return }
 
@@ -244,9 +364,36 @@ final class AppState: ObservableObject {
 
             for idx in applications.indices where applications[idx].shiftId == shiftId && applications[idx].status == .pending {
                 applications[idx].status = .rejected
+                reminderTimestamps[applications[idx].id] = nil
+                notifyStatusChangeIfNeeded(for: applications[idx])
             }
         } else {
             shifts[shiftIndex].status = .open
+        }
+    }
+
+    private func startSLATimer() {
+        slaTimerCancellable = Timer.publish(every: 60, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                self?.expireOverdueApplications()
+            }
+    }
+
+    private func expireOverdueApplications(now: Date = Date()) {
+        var changedShiftIds: Set<UUID> = []
+
+        for index in applications.indices where applications[index].status == .pending {
+            if applications[index].respondBy < now {
+                applications[index].status = .rejected
+                reminderTimestamps[applications[index].id] = nil
+                notifyStatusChangeIfNeeded(for: applications[index])
+                changedShiftIds.insert(applications[index].shiftId)
+            }
+        }
+
+        for shiftId in changedShiftIds {
+            syncShiftCapacity(for: shiftId)
         }
     }
 
@@ -264,6 +411,46 @@ final class AppState: ObservableObject {
         }
     }
 
+    private func addInAppNotification(for userId: UUID, title: String, message: String, kind: NotificationKind) {
+        notifications.append(
+            InAppNotification(
+                id: UUID(),
+                userId: userId,
+                title: title,
+                message: message,
+                kind: kind,
+                createdAt: Date(),
+                isRead: false
+            )
+        )
+    }
+
+    private func notifyStatusChangeIfNeeded(for application: ShiftApplication) {
+        guard application.status != .pending,
+              let shift = shift(by: application.shiftId) else { return }
+
+        NotificationService.notifyApplicationStatusChange(
+            shiftTitle: shift.title,
+            status: application.status
+        )
+
+        addInAppNotification(
+            for: application.workerId,
+            title: "Статус відгуку змінено",
+            message: "Зміна «\(shift.title)»: \(application.status.title.lowercased()).",
+            kind: application.status == .accepted ? .success : .error
+        )
+
+        if let worker = user(by: application.workerId) {
+            addInAppNotification(
+                for: shift.employerId,
+                title: "Оновлення по кандидату",
+                message: "Кандидат \(worker.name): \(application.status.title.lowercased()) на зміну «\(shift.title)».",
+                kind: .info
+            )
+        }
+    }
+
     private func seedData() {
         let employer1 = AppUser(
             id: UUID(),
@@ -271,6 +458,7 @@ final class AppState: ObservableObject {
             email: "cafe@quickgig.app",
             password: "123456",
             role: .employer,
+            isVerifiedEmployer: true,
             rating: 0,
             reviewsCount: 0
         )
@@ -281,6 +469,7 @@ final class AppState: ObservableObject {
             email: "logistics@quickgig.app",
             password: "123456",
             role: .employer,
+            isVerifiedEmployer: false,
             rating: 0,
             reviewsCount: 0
         )
@@ -291,6 +480,7 @@ final class AppState: ObservableObject {
             email: "alex@quickgig.app",
             password: "123456",
             role: .worker,
+            isVerifiedEmployer: false,
             rating: 0,
             reviewsCount: 0
         )
@@ -301,6 +491,7 @@ final class AppState: ObservableObject {
             email: "nina@quickgig.app",
             password: "123456",
             role: .worker,
+            isVerifiedEmployer: false,
             rating: 0,
             reviewsCount: 0
         )
@@ -320,8 +511,8 @@ final class AppState: ObservableObject {
 
         let shift1 = JobShift(
             id: UUID(),
-            title: "Бариста на утро",
-            details: "Нужна помощь с 08:00 до 16:00, опыт приветствуется",
+            title: "Бариста на ранок",
+            details: "Потрібна допомога з 08:00 до 16:00, досвід вітається",
             pay: 120,
             startDate: start1,
             endDate: end1,
@@ -333,8 +524,8 @@ final class AppState: ObservableObject {
 
         let shift2 = JobShift(
             id: UUID(),
-            title: "Погрузка товара",
-            details: "Склад, смена на 6 часов, перерывы включены",
+            title: "Вантажні роботи на складі",
+            details: "Склад, зміна на 6 годин, перерви включені",
             pay: 140,
             startDate: start2,
             endDate: end2,
@@ -346,8 +537,8 @@ final class AppState: ObservableObject {
 
         let shift3 = JobShift(
             id: UUID(),
-            title: "Промо у ТЦ",
-            details: "Раздача листовок, коммуникация с клиентами",
+            title: "Промо біля ТЦ",
+            details: "Роздача листівок, комунікація з клієнтами",
             pay: 110,
             startDate: start3,
             endDate: end3,
@@ -365,7 +556,7 @@ final class AppState: ObservableObject {
                 fromUserId: worker1.id,
                 toUserId: employer1.id,
                 stars: 5,
-                comment: "Все четко и вовремя оплатили",
+                comment: "Усе чітко, оплатили вчасно",
                 date: now
             ),
             Review(
@@ -373,7 +564,7 @@ final class AppState: ObservableObject {
                 fromUserId: employer1.id,
                 toUserId: worker1.id,
                 stars: 5,
-                comment: "Ответственный и пунктуальный",
+                comment: "Відповідальний і пунктуальний",
                 date: now
             ),
             Review(
@@ -381,7 +572,7 @@ final class AppState: ObservableObject {
                 fromUserId: worker2.id,
                 toUserId: employer2.id,
                 stars: 4,
-                comment: "Задача понятная, но много физической нагрузки",
+                comment: "Завдання зрозуміле, але багато фізичного навантаження",
                 date: now
             )
         ]
@@ -397,14 +588,16 @@ final class AppState: ObservableObject {
                 shiftId: shift1.id,
                 workerId: worker1.id,
                 status: .accepted,
-                createdAt: now
+                createdAt: now,
+                respondBy: now
             ),
             ShiftApplication(
                 id: UUID(),
                 shiftId: shift2.id,
                 workerId: worker2.id,
                 status: .pending,
-                createdAt: now
+                createdAt: now,
+                respondBy: calendar.date(byAdding: .hour, value: employerResponseSLAHours, to: now) ?? now
             )
         ]
 

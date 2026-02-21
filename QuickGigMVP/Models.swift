@@ -10,9 +10,9 @@ enum UserRole: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .worker:
-            return "Работник"
+            return "Працівник"
         case .employer:
-            return "Работодатель"
+            return "Роботодавець"
         }
     }
 }
@@ -26,9 +26,9 @@ enum ShiftStatus: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .open:
-            return "Открыта"
+            return "Відкрита"
         case .closed:
-            return "Закрыта"
+            return "Закрита"
         }
     }
 }
@@ -43,11 +43,11 @@ enum ApplicationStatus: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .pending:
-            return "Ожидает"
+            return "Очікує"
         case .accepted:
-            return "Принят"
+            return "Прийнято"
         case .rejected:
-            return "Отклонен"
+            return "Відхилено"
         }
     }
 }
@@ -58,6 +58,7 @@ struct AppUser: Identifiable {
     var email: String
     var password: String
     var role: UserRole
+    var isVerifiedEmployer: Bool
     var rating: Double
     var reviewsCount: Int
 
@@ -92,6 +93,7 @@ struct ShiftApplication: Identifiable {
     let workerId: UUID
     var status: ApplicationStatus
     let createdAt: Date
+    let respondBy: Date
 }
 
 struct Review: Identifiable {
@@ -101,4 +103,21 @@ struct Review: Identifiable {
     let stars: Int
     let comment: String
     let date: Date
+}
+
+enum NotificationKind: String {
+    case info
+    case success
+    case warning
+    case error
+}
+
+struct InAppNotification: Identifiable {
+    let id: UUID
+    let userId: UUID
+    let title: String
+    let message: String
+    let kind: NotificationKind
+    let createdAt: Date
+    var isRead: Bool
 }

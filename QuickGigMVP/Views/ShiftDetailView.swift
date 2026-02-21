@@ -16,18 +16,18 @@ struct ShiftDetailView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Смена") {
+                Section("Зміна") {
                     Text(liveShift.title)
                         .font(.headline)
                     Text(liveShift.details)
-                    Text("Оплата: $\(liveShift.pay)/ч")
-                    Text("Длительность: \(liveShift.durationHours) ч")
+                    Text("Оплата: $\(liveShift.pay)/год")
+                    Text("Тривалість: \(liveShift.durationHours) год")
                     Text("Дата: \(liveShift.startDate, style: .date) \(liveShift.startDate, style: .time)")
                         .foregroundStyle(.secondary)
 
                     let accepted = appState.acceptedApplicationsCount(for: liveShift.id)
                     HStack {
-                        Text("Набор")
+                        Text("Набір")
                         Spacer()
                         Text("\(accepted)/\(liveShift.requiredWorkers)")
                             .font(.body.bold())
@@ -41,9 +41,16 @@ struct ShiftDetailView: View {
                 }
 
                 if let employer = appState.user(by: liveShift.employerId) {
-                    Section("Работодатель") {
-                        Text(employer.name)
-                        Text("Рейтинг: \(employer.rating, specifier: "%.1f") (\(employer.reviewsCount) отзывов)")
+                    Section("Роботодавець") {
+                        HStack {
+                            Text(employer.name)
+                            if employer.isVerifiedEmployer {
+                                Label("Перевірений", systemImage: "checkmark.seal.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.blue)
+                            }
+                        }
+                        Text("Рейтинг: \(employer.rating, specifier: "%.1f") (\(employer.reviewsCount) відгуків)")
                             .foregroundStyle(.secondary)
                     }
 
@@ -52,10 +59,10 @@ struct ShiftDetailView: View {
                     reviewSection(for: employer)
                 }
             }
-            .navigationTitle("Детали смены")
+            .navigationTitle("Деталі зміни")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Закрыть") { dismiss() }
+                    Button("Закрити") { dismiss() }
                 }
             }
         }
@@ -68,18 +75,35 @@ struct ShiftDetailView: View {
             currentUser.role == .worker,
             currentUser.id != employer.id
         {
-            Section("Отклик") {
+            Section("Відгук") {
                 if let application = appState.application(for: liveShift.id, workerId: currentUser.id) {
-                    HStack {
-                        Text("Статус")
-                        Spacer()
-                        ApplicationStatusBadge(status: application.status)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Статус")
+                            Spacer()
+                            ApplicationStatusBadge(status: application.status)
+                        }
+                        if application.status == .pending {
+                            Text(appState.applicationTimeRemainingText(application))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if let cooldown = appState.reminderCooldownText(for: application) {
+                                Text(cooldown)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Button("Нагадати роботодавцю") {
+                                appState.remindEmployer(for: application.id)
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(!appState.canSendReminder(for: application))
+                        }
                     }
                 } else if liveShift.status == .closed {
-                    Text("Набор завершен. Мест больше нет.")
+                    Text("Набір завершено. Вільних місць більше немає.")
                         .foregroundStyle(.secondary)
                 } else {
-                    Button("Откликнуться на смену") {
+                    Button("Відгукнутися на зміну") {
                         appState.apply(to: liveShift.id)
                     }
                     .buttonStyle(.borderedProminent)
@@ -97,9 +121,9 @@ struct ShiftDetailView: View {
         {
             let shiftApplications = appState.applications(for: liveShift.id)
 
-            Section("Отклики кандидатов") {
+            Section("Відгуки кандидатів") {
                 if shiftApplications.isEmpty {
-                    Text("Пока откликов нет")
+                    Text("Поки відгуків немає")
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(shiftApplications) { application in
@@ -113,13 +137,18 @@ struct ShiftDetailView: View {
                                 }
 
                                 if application.status == .pending && liveShift.status == .open {
+                                    if appState.isApplicationSLACritical(application) {
+                                        Label("SLA ризик: скоро спливе термін відповіді", systemImage: "exclamationmark.triangle.fill")
+                                            .font(.caption)
+                                            .foregroundStyle(.orange)
+                                    }
                                     HStack {
-                                        Button("Принять") {
+                                        Button("Прийняти") {
                                             appState.updateApplicationStatus(applicationId: application.id, status: .accepted)
                                         }
                                         .buttonStyle(.borderedProminent)
 
-                                        Button("Отклонить") {
+                                        Button("Відхилити") {
                                             appState.updateApplicationStatus(applicationId: application.id, status: .rejected)
                                         }
                                         .buttonStyle(.bordered)
@@ -137,10 +166,10 @@ struct ShiftDetailView: View {
     @ViewBuilder
     private func reviewSection(for employer: AppUser) -> some View {
         if let currentUser = appState.currentUser, currentUser.id != employer.id {
-            Section("Оценить работодателя") {
-                Stepper("Звезды: \(stars)", value: $stars, in: 1...5)
-                TextField("Короткий отзыв", text: $reviewText)
-                Button("Отправить отзыв") {
+            Section("Оцінити роботодавця") {
+                Stepper("Зірки: \(stars)", value: $stars, in: 1...5)
+                TextField("Короткий відгук", text: $reviewText)
+                Button("Надіслати відгук") {
                     appState.addReview(to: employer.id, stars: stars, comment: reviewText)
                     dismiss()
                 }

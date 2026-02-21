@@ -20,7 +20,7 @@ targets:
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_CFBundleDisplayName: QuickGig MVP
-        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: Мы используем геолокацию, чтобы показать подработку в вашем регионе Украины.
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: Ми використовуємо геолокацію, щоб показувати підробіток у вашому регіоні України.
         GENERATE_INFOPLIST_FILE: YES
     scheme:
       testTargets: []

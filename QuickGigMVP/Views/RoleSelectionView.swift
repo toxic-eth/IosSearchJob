@@ -17,24 +17,24 @@ struct RoleSelectionView: View {
                     .font(.largeTitle.bold())
                     .foregroundStyle(.white)
 
-                Text("Кто вы сегодня?")
+                Text("Хто ви сьогодні?")
                     .font(.title2.bold())
                     .foregroundStyle(.white)
 
-                Text("Выберите тип аккаунта, чтобы показать только нужный интерфейс входа и регистрации.")
+                Text("Оберіть тип акаунта, щоб показати тільки потрібний сценарій входу та реєстрації.")
                     .foregroundStyle(.white.opacity(0.9))
 
                 VStack(spacing: 12) {
                     roleCard(
-                        title: "Ищу подработку",
-                        subtitle: "Нахожу смены на карте, откликаюсь и работаю",
+                        title: "Шукаю підробіток",
+                        subtitle: "Знаходжу зміни на мапі, відгукуюсь і працюю",
                         icon: "person.badge.clock",
                         role: .worker
                     )
 
                     roleCard(
-                        title: "Предлагаю работу",
-                        subtitle: "Создаю смены, смотрю отклики и нанимаю",
+                        title: "Пропоную роботу",
+                        subtitle: "Створюю зміни, переглядаю відгуки й наймаю",
                         icon: "building.2.crop.circle",
                         role: .employer
                     )
@@ -76,8 +76,4 @@ struct RoleSelectionView: View {
         }
         .buttonStyle(.plain)
     }
-}
-
-#Preview {
-    RoleSelectionView { _ in }
 }

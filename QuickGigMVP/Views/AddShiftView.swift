@@ -19,38 +19,38 @@ struct AddShiftView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Описание") {
-                    TextField("Название подработки", text: $title)
-                    TextField("Краткое описание", text: $details, axis: .vertical)
+                Section("Опис") {
+                    TextField("Назва підробітку", text: $title)
+                    TextField("Короткий опис", text: $details, axis: .vertical)
                         .lineLimit(3, reservesSpace: true)
-                    Stepper("Оплата: $\(pay)/ч", value: $pay, in: 50...1000, step: 10)
-                    Stepper("Нужно работников: \(requiredWorkers)", value: $requiredWorkers, in: 1...30)
+                    Stepper("Оплата: $\(pay)/год", value: $pay, in: 50...1000, step: 10)
+                    Stepper("Потрібно працівників: \(requiredWorkers)", value: $requiredWorkers, in: 1...30)
                 }
 
-                Section("Время") {
-                    DatePicker("Начало", selection: $startDate)
-                    DatePicker("Окончание", selection: $endDate)
+                Section("Час") {
+                    DatePicker("Початок", selection: $startDate)
+                    DatePicker("Завершення", selection: $endDate)
                 }
 
-                Section("Точка на карте") {
+                Section("Точка на мапі") {
                     TextField("Широта", text: $latitude)
                         .keyboardType(.decimalPad)
-                    TextField("Долгота", text: $longitude)
+                    TextField("Довгота", text: $longitude)
                         .keyboardType(.decimalPad)
-                    Text("Если точка вне Украины, автоматически установится Киев")
+                    Text("Якщо точка поза Україною, автоматично буде Київ")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle("Новая смена")
+            .navigationTitle("Нова зміна")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Отмена") { dismiss() }
+                    Button("Скасувати") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Сохранить") {
+                    Button("Зберегти") {
                         appState.addShift(
-                            title: title.isEmpty ? "Без названия" : title,
+                            title: title.isEmpty ? "Без назви" : title,
                             details: details,
                             pay: pay,
                             startDate: startDate,

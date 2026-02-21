@@ -15,20 +15,20 @@ struct OnboardingView: View {
 
     private let pages: [OnboardingPage] = [
         OnboardingPage(
-            title: "Быстрый поиск подработки",
-            subtitle: "Находите смены на 1-2 дня рядом с вами и выходите на работу уже завтра.",
+            title: "Швидкий старт у зміні",
+            subtitle: "Знаходьте підробіток поруч, відгукуйтесь за хвилину та виходьте вже сьогодні або завтра.",
             icon: "briefcase.fill",
             gradient: [Color.blue, Color.cyan]
         ),
         OnboardingPage(
-            title: "Честные условия",
-            subtitle: "Работодатель сразу указывает оплату, время и описание задачи до отклика.",
+            title: "Прозорі умови",
+            subtitle: "Оплата, час, адреса та опис задачі видно до відгуку. Жодних сюрпризів на місці.",
             icon: "checkmark.shield.fill",
             gradient: [Color.green, Color.mint]
         ),
         OnboardingPage(
-            title: "Рейтинги и доверие",
-            subtitle: "Работники и работодатели оценивают друг друга, формируя прозрачную репутацию.",
+            title: "Рейтинг і довіра",
+            subtitle: "Працівники та роботодавці оцінюють одне одного після зміни, формуючи чесну репутацію.",
             icon: "star.circle.fill",
             gradient: [Color.orange, Color.red]
         ),
@@ -46,7 +46,7 @@ struct OnboardingView: View {
             VStack(spacing: 22) {
                 HStack {
                     Spacer()
-                    Button("Пропустить") {
+                    Button("Пропустити") {
                         onFinish()
                     }
                     .foregroundStyle(.white.opacity(0.85))
@@ -63,7 +63,7 @@ struct OnboardingView: View {
                 .tabViewStyle(.page(indexDisplayMode: .always))
                 .frame(maxHeight: 540)
 
-                Button(currentPage == pages.count - 1 ? "Начать" : "Далее") {
+                Button(currentPage == pages.count - 1 ? "Почати" : "Далі") {
                     if currentPage == pages.count - 1 {
                         onFinish()
                     } else {
@@ -112,8 +112,4 @@ struct OnboardingView: View {
         .background(.ultraThinMaterial.opacity(0.45))
         .clipShape(RoundedRectangle(cornerRadius: 24))
     }
-}
-
-#Preview {
-    OnboardingView {}
 }

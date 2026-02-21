@@ -9,9 +9,9 @@ private enum AuthMode: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .login:
-            return "Вход"
+            return "Вхід"
         case .register:
-            return "Регистрация"
+            return "Реєстрація"
         }
     }
 }
@@ -68,7 +68,7 @@ struct LoginView: View {
 
                             if mode == .register {
                                 PasswordInputField(
-                                    title: "Повторите пароль",
+                                    title: "Повторіть пароль",
                                     text: $confirmPassword
                                 )
                             }
@@ -105,11 +105,11 @@ struct LoginView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(selectedRole == .worker ? "Ищу подработку" : "Нужны сотрудники")
+            Text(selectedRole == .worker ? "Шукаю підробіток" : "Шукаю працівників")
                 .font(.largeTitle.bold())
             Text(selectedRole == .worker
-                 ? "Находите смены на карте и откликайтесь за минуту."
-                 : "Размещайте смены и быстро находите исполнителей.")
+                 ? "Знаходьте зміни на мапі та відгукуйтесь за хвилину."
+                 : "Публікуйте зміни та швидко знаходьте виконавців.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -118,21 +118,21 @@ struct LoginView: View {
     }
 
     private var actionTitle: String {
-        mode == .login ? "Войти" : "Создать аккаунт"
+        mode == .login ? "Увійти" : "Створити акаунт"
     }
 
     private var namePlaceholder: String {
-        selectedRole == .worker ? "Имя и фамилия" : "Название компании"
+        selectedRole == .worker ? "Ім'я та прізвище" : "Назва компанії"
     }
 
     private var emailPlaceholder: String {
-        selectedRole == .worker ? "Ваш email" : "Email компании"
+        selectedRole == .worker ? "Ваш email" : "Email компанії"
     }
 
     private var changeRoleTitle: String {
         selectedRole == .worker
-            ? "Я работодатель"
-            : "Я ищу подработку"
+            ? "Я роботодавець"
+            : "Я шукаю підробіток"
     }
 
     private func submit() {
@@ -142,7 +142,7 @@ struct LoginView: View {
         }
 
         guard password == confirmPassword else {
-            appState.authErrorMessage = "Пароли не совпадают"
+            appState.authErrorMessage = "Паролі не збігаються"
             return
         }
 
