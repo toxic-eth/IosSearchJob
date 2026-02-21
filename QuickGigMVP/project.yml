@@ -1,0 +1,25 @@
+name: QuickGigMVP
+options:
+  bundleIdPrefix: com.quickgig
+settings:
+  base:
+    SWIFT_VERSION: 5.0
+targets:
+  QuickGigMVP:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: .
+        excludes:
+          - project.yml
+          - README.md
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.quickgig.mvp
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_CFBundleDisplayName: QuickGig MVP
+        GENERATE_INFOPLIST_FILE: YES
+    scheme:
+      testTargets: []
