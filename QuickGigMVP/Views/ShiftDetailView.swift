@@ -20,6 +20,7 @@ struct ShiftDetailView: View {
                     Text(liveShift.title)
                         .font(.headline)
                     Text(liveShift.details)
+                    Text("Адреса: \(liveShift.address)")
                     Text("Оплата: \(liveShift.pay) грн/год")
                     Text("Тривалість: \(liveShift.durationHours) год")
                     Text("Формат: \(liveShift.workFormat.title)")

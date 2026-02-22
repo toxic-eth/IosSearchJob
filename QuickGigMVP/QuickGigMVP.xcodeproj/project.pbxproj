@@ -50,7 +50,7 @@
 		D658184857A76782E43B728C /* QuickGigMVPApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickGigMVPApp.swift; sourceTree = "<group>"; };
 		DAB082A05800D8CDB8653AB7 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		DD0B94CB1246452B3FF86CCD /* RoleSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoleSelectionView.swift; sourceTree = "<group>"; };
-		F478A1B9B3F2A2FA8B03D049 /* QuickGigMVP.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = QuickGigMVP.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F478A1B9B3F2A2FA8B03D049 /* QuickGigMVP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = QuickGigMVP.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -336,6 +336,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 7P6MF54755;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "QuickGig MVP";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Ми використовуємо геолокацію, щоб показувати підробіток у вашому регіоні України.";
@@ -346,7 +347,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.quickgig.mvp;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.toxiceth.quickgigmvp-";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -357,6 +358,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 7P6MF54755;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "QuickGig MVP";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Ми використовуємо геолокацію, щоб показувати підробіток у вашому регіоні України.";
@@ -367,7 +369,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.quickgig.mvp;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.toxiceth.quickgigmvp-";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

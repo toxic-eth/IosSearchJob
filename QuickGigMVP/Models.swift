@@ -93,6 +93,7 @@ struct JobShift: Identifiable {
     let id: UUID
     var title: String
     var details: String
+    var address: String
     var pay: Int
     var startDate: Date
     var endDate: Date
