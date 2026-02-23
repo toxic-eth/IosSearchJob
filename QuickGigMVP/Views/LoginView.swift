@@ -1,4 +1,5 @@
 import SwiftUI
+import AuthenticationServices
 
 private enum AuthMode: String, CaseIterable, Identifiable {
     case login
@@ -85,6 +86,63 @@ struct LoginView: View {
                             }
                             .buttonStyle(.borderedProminent)
                             .frame(maxWidth: .infinity)
+
+                            HStack(spacing: 10) {
+                                Rectangle()
+                                    .fill(Color.secondary.opacity(0.25))
+                                    .frame(height: 1)
+                                Text("або")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Rectangle()
+                                    .fill(Color.secondary.opacity(0.25))
+                                    .frame(height: 1)
+                            }
+                            .padding(.vertical, 2)
+
+                            SignInWithAppleButton(
+                                onRequest: { _ in },
+                                onCompletion: { _ in
+                                    _ = appState.loginWithApple(expectedRole: selectedRole)
+                                }
+                            )
+                            .signInWithAppleButtonStyle(.black)
+                            .frame(height: 50)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                            Button {
+                                _ = appState.loginWithGoogle(expectedRole: selectedRole)
+                            } label: {
+                                HStack(spacing: 10) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(Color.white)
+                                            .frame(width: 28, height: 28)
+                                        Text("G")
+                                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                                            .foregroundStyle(
+                                                LinearGradient(
+                                                    colors: [Color.blue, Color.red, Color.yellow, Color.green],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
+                                            )
+                                    }
+                                    Text("Продовжити з Google")
+                                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                    Spacer(minLength: 0)
+                                }
+                                .foregroundStyle(Color.black.opacity(0.92))
+                                .padding(.horizontal, 14)
+                                .frame(maxWidth: .infinity, minHeight: 50)
+                                .background(Color.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .stroke(Color.black.opacity(0.14), lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
 
                             Button(changeRoleTitle) {
                                 onResetRole()

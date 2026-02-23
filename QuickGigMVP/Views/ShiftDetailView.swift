@@ -85,6 +85,16 @@ struct ShiftDetailView: View {
                             Spacer()
                             ApplicationStatusBadge(status: application.status)
                         }
+                        if application.status == .accepted {
+                            HStack {
+                                Text("Оплата")
+                                Spacer()
+                                WorkProgressBadge(status: application.progressStatus)
+                            }
+                            Text(appState.guaranteeStateText(for: application))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                         if application.status == .pending {
                             Text(appState.applicationTimeRemainingText(application))
                                 .font(.caption)
@@ -155,6 +165,20 @@ struct ShiftDetailView: View {
                                         }
                                         .buttonStyle(.bordered)
                                     }
+                                } else if application.status == .accepted {
+                                    HStack {
+                                        WorkProgressBadge(status: application.progressStatus)
+                                        Spacer()
+                                        if application.progressStatus != .paid {
+                                            Button(nextActionTitle(for: application.progressStatus)) {
+                                                _ = appState.advanceWorkProgressStatus(applicationId: application.id)
+                                            }
+                                            .buttonStyle(.borderedProminent)
+                                        }
+                                    }
+                                    Text(appState.guaranteeStateText(for: application))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                 }
                             }
                             .padding(.vertical, 4)
@@ -168,14 +192,45 @@ struct ShiftDetailView: View {
     @ViewBuilder
     private func reviewSection(for employer: AppUser) -> some View {
         if let currentUser = appState.currentUser, currentUser.id != employer.id {
-            Section("Оцінити роботодавця") {
-                Stepper("Зірки: \(stars)", value: $stars, in: 1...5)
-                TextField("Короткий відгук", text: $reviewText)
-                Button("Надіслати відгук") {
-                    appState.addReview(to: employer.id, stars: stars, comment: reviewText)
-                    dismiss()
+            let canLeave = appState.canLeaveReview(from: currentUser.id, to: employer.id, for: liveShift.id)
+            let alreadyLeft = appState.hasReview(from: currentUser.id, to: employer.id, for: liveShift.id)
+
+            if canLeave && !alreadyLeft {
+                Section("Оцінити роботодавця") {
+                    Stepper("Зірки: \(stars)", value: $stars, in: 1...5)
+                    TextField("Короткий відгук", text: $reviewText)
+                    Button("Надіслати відгук") {
+                        if appState.addReview(to: employer.id, for: liveShift.id, stars: stars, comment: reviewText) {
+                            dismiss()
+                        }
+                    }
+                }
+            } else if alreadyLeft {
+                Section("Оцінити роботодавця") {
+                    Text("Відгук за цю зміну вже залишено")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Section("Оцінити роботодавця") {
+                    Text("Відгук стане доступним після завершення спільної зміни")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
+        }
+    }
+
+    private func nextActionTitle(for status: WorkProgressStatus) -> String {
+        switch status {
+        case .scheduled:
+            return "Почати роботу"
+        case .inProgress:
+            return "Позначити завершено"
+        case .completed:
+            return "Позначити оплачено"
+        case .paid:
+            return "Оплачено"
         }
     }
 }
@@ -227,5 +282,45 @@ private struct ShiftStatusBadge: View {
             .background(status == .open ? Color.blue.opacity(0.2) : Color.gray.opacity(0.2))
             .foregroundStyle(status == .open ? Color.blue : Color.gray)
             .clipShape(Capsule())
+    }
+}
+
+private struct WorkProgressBadge: View {
+    let status: WorkProgressStatus
+
+    var body: some View {
+        Text(status.title)
+            .font(.caption.bold())
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(backgroundColor)
+            .foregroundStyle(textColor)
+            .clipShape(Capsule())
+    }
+
+    private var backgroundColor: Color {
+        switch status {
+        case .scheduled:
+            return .blue.opacity(0.2)
+        case .inProgress:
+            return .orange.opacity(0.2)
+        case .completed:
+            return .purple.opacity(0.2)
+        case .paid:
+            return .green.opacity(0.2)
+        }
+    }
+
+    private var textColor: Color {
+        switch status {
+        case .scheduled:
+            return .blue
+        case .inProgress:
+            return .orange
+        case .completed:
+            return .purple
+        case .paid:
+            return .green
+        }
     }
 }

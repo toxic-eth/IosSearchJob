@@ -9,6 +9,7 @@ struct SettingsView: View {
 
     @State private var securityEmail = ""
     @State private var securityCode = ""
+    @State private var oldEmailForChange = ""
     @State private var newEmailForChange = ""
 
     private var language: AppLanguage { resolvedLanguage(from: appLanguageRawValue) }
@@ -100,6 +101,7 @@ struct SettingsView: View {
                 Spacer()
                 Button {
                     securityCode = ""
+                    oldEmailForChange = appState.currentUser?.email ?? ""
                     newEmailForChange = ""
                     appState.beginEmailChange()
                 } label: {
@@ -132,6 +134,25 @@ struct SettingsView: View {
                 ) {
                     _ = appState.confirmFirstEmail(code: securityCode)
                 }
+            } else if appState.emailVerificationStep == .enterChangeEmails {
+                TextField("Стара пошта", text: $oldEmailForChange)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.emailAddress)
+                    .autocorrectionDisabled(true)
+                    .textFieldStyle(.roundedBorder)
+
+                TextField("Нова пошта", text: $newEmailForChange)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.emailAddress)
+                    .autocorrectionDisabled(true)
+                    .textFieldStyle(.roundedBorder)
+
+                Button("Запросити коди підтвердження") {
+                    _ = appState.startEmailChange(oldEmail: oldEmailForChange, newEmail: newEmailForChange)
+                    securityCode = ""
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.purple)
             } else if appState.emailVerificationStep == .verifyOldEmail {
                 verificationCodeBlock(
                     title: "Введіть код зі старої пошти",
@@ -140,19 +161,6 @@ struct SettingsView: View {
                 ) {
                     _ = appState.confirmOldEmailForChange(code: securityCode)
                 }
-            } else if appState.emailVerificationStep == .enterNewEmail {
-                TextField("Нова пошта", text: $newEmailForChange)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.emailAddress)
-                    .autocorrectionDisabled(true)
-                    .textFieldStyle(.roundedBorder)
-
-                Button("Надіслати код на нову пошту") {
-                    _ = appState.submitNewEmailForChange(newEmailForChange)
-                    securityCode = ""
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.purple)
             } else if appState.emailVerificationStep == .verifyNewEmail {
                 verificationCodeBlock(
                     title: "Введіть код з нової пошти",

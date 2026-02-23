@@ -21,6 +21,15 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_CFBundleDisplayName: QuickGig MVP
         INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: Ми використовуємо геолокацію, щоб показувати підробіток у вашому регіоні України.
+        INFOPLIST_KEY_MBXAccessToken: $(MAPBOX_ACCESS_TOKEN)
+        INFOPLIST_KEY_MGLMapboxAccessToken: $(MAPBOX_ACCESS_TOKEN)
         GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - package: mapbox-maps-ios
+        product: MapboxMaps
     scheme:
       testTargets: []
+packages:
+  mapbox-maps-ios:
+    url: https://github.com/mapbox/mapbox-maps-ios.git
+    from: 11.4.0

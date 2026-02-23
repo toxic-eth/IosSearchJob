@@ -4,6 +4,7 @@ import CoreLocation
 final class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var authorizationStatus: CLAuthorizationStatus
     @Published var currentLocation: CLLocationCoordinate2D?
+    @Published var lastLocationError: String?
 
     private let manager = CLLocationManager()
 
@@ -11,7 +12,8 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
         authorizationStatus = manager.authorizationStatus
         super.init()
         manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+        manager.distanceFilter = 25
     }
 
     func requestPermission() {
@@ -19,6 +21,7 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
             manager.requestWhenInUseAuthorization()
         } else if authorizationStatus == .authorizedAlways || authorizationStatus == .authorizedWhenInUse {
             manager.startUpdatingLocation()
+            manager.requestLocation()
         }
     }
 
@@ -27,11 +30,23 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
 
         if authorizationStatus == .authorizedWhenInUse || authorizationStatus == .authorizedAlways {
             manager.startUpdatingLocation()
+            manager.requestLocation()
         }
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         currentLocation = locations.last?.coordinate
+        lastLocationError = nil
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        let nsError = error as NSError
+        if nsError.domain == kCLErrorDomain,
+           nsError.code == CLError.locationUnknown.rawValue {
+            // Temporary condition, keep service alive and wait for next update.
+            return
+        }
+        lastLocationError = error.localizedDescription
     }
 }
 

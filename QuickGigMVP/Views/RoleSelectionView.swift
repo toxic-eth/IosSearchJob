@@ -71,8 +71,17 @@ struct RoleSelectionView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(14)
-            .background(.regularMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .frame(maxWidth: .infinity, minHeight: 98)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(Color.white.opacity(0.24), lineWidth: 1)
+                    )
+            )
+            .shadow(color: .black.opacity(0.16), radius: 10, x: 0, y: 6)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
     }

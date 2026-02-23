@@ -5,11 +5,9 @@ struct ProfileView: View {
     @AppStorage("preferredRole") private var preferredRoleRawValue = ""
     @AppStorage("appLanguage") private var appLanguageRawValue = AppLanguage.uk.rawValue
 
-    @State private var selectedUserId: UUID?
-    @State private var stars = 5
-    @State private var comment = ""
     @State private var showSettings = false
     @State private var resumeText = ""
+    @State private var selectedGuaranteeShift: JobShift?
 
     private var language: AppLanguage { resolvedLanguage(from: appLanguageRawValue) }
 
@@ -24,7 +22,7 @@ struct ProfileView: View {
                             userCard(currentUser)
                             settingsShortcut
                             resumeCard(currentUser)
-                            reviewComposer(currentUser)
+                            payoutGuaranteeCard(currentUser)
                             recentReviews(currentUser)
                             accountActions
                         }
@@ -37,6 +35,10 @@ struct ProfileView: View {
             .navigationTitle(I18n.t("profile.title", language))
             .sheet(isPresented: $showSettings) {
                 SettingsView()
+            }
+            .sheet(item: $selectedGuaranteeShift) { shift in
+                ShiftDetailView(shift: shift)
+                    .environmentObject(appState)
             }
             .onAppear {
                 resumeText = appState.currentUser?.resumeSummary ?? ""
@@ -74,39 +76,6 @@ struct ProfileView: View {
         .glassCard()
     }
 
-    private func reviewComposer(_ currentUser: AppUser) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Залишити відгук")
-                .font(.headline)
-                .foregroundStyle(.primary)
-
-            Picker("Кому", selection: $selectedUserId) {
-                Text(I18n.t("profile.review_for", language)).tag(UUID?.none)
-                ForEach(appState.users.filter { $0.id != currentUser.id }) { user in
-                    Text("\(user.name) • \(user.role.title)").tag(UUID?.some(user.id))
-                }
-            }
-            .pickerStyle(.menu)
-
-            Stepper("Зірки: \(stars)", value: $stars, in: 1...5)
-                .foregroundStyle(.primary)
-
-            TextField("Відгук", text: $comment)
-                .textFieldStyle(.roundedBorder)
-
-            Button(I18n.t("profile.send", language)) {
-                guard let selectedUserId else { return }
-                appState.addReview(to: selectedUserId, stars: stars, comment: comment)
-                comment = ""
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.purple)
-            .disabled(selectedUserId == nil)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassCard()
-    }
-
     private func recentReviews(_ currentUser: AppUser) -> some View {
         let mine = appState.reviews(for: currentUser.id)
 
@@ -139,6 +108,122 @@ struct ProfileView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassCard()
+    }
+
+    private func payoutGuaranteeCard(_ currentUser: AppUser) -> some View {
+        guard currentUser.role == .worker else {
+            return AnyView(EmptyView())
+        }
+
+        let acceptedApps = appState.applicationsForCurrentWorker()
+            .filter { $0.status == .accepted }
+        let paidCount = acceptedApps.filter { $0.progressStatus == .paid }.count
+        let awaitingCount = acceptedApps.filter { $0.progressStatus == .completed }.count
+        let inProgressCount = acceptedApps.filter { $0.progressStatus == .inProgress }.count
+
+        let recentItems: [WorkerPayoutItem] = acceptedApps
+            .compactMap { app in
+                guard let shift = appState.shift(by: app.shiftId) else { return nil }
+                return WorkerPayoutItem(application: app, shift: shift)
+            }
+            .sorted { lhs, rhs in
+                if lhs.application.progressStatus == rhs.application.progressStatus {
+                    return lhs.shift.endDate > rhs.shift.endDate
+                }
+                return payoutPriority(lhs.application.progressStatus) < payoutPriority(rhs.application.progressStatus)
+            }
+
+        return AnyView(
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Гарантія виплати")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+
+                HStack(spacing: 8) {
+                    guaranteeStat(
+                        title: "Оплачено",
+                        value: paidCount,
+                        color: .green
+                    )
+                    guaranteeStat(
+                        title: "Очікує оплату",
+                        value: awaitingCount,
+                        color: .purple
+                    )
+                    guaranteeStat(
+                        title: "В роботі",
+                        value: inProgressCount,
+                        color: .orange
+                    )
+                }
+
+                if recentItems.isEmpty {
+                    Text("Після прийнятої зміни тут з'явиться статус гарантії виплати")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(recentItems.prefix(6)) { item in
+                        Button {
+                            selectedGuaranteeShift = item.shift
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text(item.shift.title)
+                                        .font(.subheadline.bold())
+                                        .foregroundStyle(.primary)
+                                    Spacer()
+                                    ProfileProgressBadge(status: item.application.progressStatus)
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption.bold())
+                                        .foregroundStyle(.secondary)
+                                }
+                                Text(item.shift.address)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text(appState.guaranteeStateText(for: item.application))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.primary.opacity(0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassCard()
+        )
+    }
+
+    private func guaranteeStat(title: String, value: Int, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("\(value)")
+                .font(.title3.bold())
+                .foregroundStyle(color)
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color.primary.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func payoutPriority(_ status: WorkProgressStatus) -> Int {
+        switch status {
+        case .completed:
+            return 0
+        case .inProgress:
+            return 1
+        case .scheduled:
+            return 2
+        case .paid:
+            return 3
+        }
     }
 
     private var accountActions: some View {
@@ -208,5 +293,51 @@ struct ProfileView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassCard()
+    }
+}
+
+private struct WorkerPayoutItem: Identifiable {
+    let application: ShiftApplication
+    let shift: JobShift
+    var id: UUID { application.id }
+}
+
+private struct ProfileProgressBadge: View {
+    let status: WorkProgressStatus
+
+    var body: some View {
+        Text(status.title)
+            .font(.caption.bold())
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(backgroundColor)
+            .foregroundStyle(textColor)
+            .clipShape(Capsule())
+    }
+
+    private var backgroundColor: Color {
+        switch status {
+        case .scheduled:
+            return .blue.opacity(0.2)
+        case .inProgress:
+            return .orange.opacity(0.2)
+        case .completed:
+            return .purple.opacity(0.2)
+        case .paid:
+            return .green.opacity(0.2)
+        }
+    }
+
+    private var textColor: Color {
+        switch status {
+        case .scheduled:
+            return .blue
+        case .inProgress:
+            return .orange
+        case .completed:
+            return .purple
+        case .paid:
+            return .green
+        }
     }
 }

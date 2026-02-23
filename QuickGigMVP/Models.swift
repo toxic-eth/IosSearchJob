@@ -52,6 +52,28 @@ enum ApplicationStatus: String, CaseIterable, Identifiable {
     }
 }
 
+enum WorkProgressStatus: String, CaseIterable, Identifiable {
+    case scheduled
+    case inProgress
+    case completed
+    case paid
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .scheduled:
+            return "Заплановано"
+        case .inProgress:
+            return "В роботі"
+        case .completed:
+            return "Завершено"
+        case .paid:
+            return "Оплачено"
+        }
+    }
+}
+
 enum WorkFormat: String, CaseIterable, Identifiable {
     case offline
     case online
@@ -114,6 +136,7 @@ struct ShiftApplication: Identifiable {
     let shiftId: UUID
     let workerId: UUID
     var status: ApplicationStatus
+    var progressStatus: WorkProgressStatus
     let createdAt: Date
     let respondBy: Date
 }
@@ -122,6 +145,7 @@ struct Review: Identifiable {
     let id: UUID
     let fromUserId: UUID
     let toUserId: UUID
+    var shiftId: UUID? = nil
     let stars: Int
     let comment: String
     let date: Date

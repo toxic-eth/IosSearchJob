@@ -5,8 +5,8 @@ import CoreLocation
 enum EmailVerificationStep {
     case none
     case confirmFirstEmail
+    case enterChangeEmails
     case verifyOldEmail
-    case enterNewEmail
     case verifyNewEmail
 }
 
@@ -42,6 +42,7 @@ final class AppState: ObservableObject {
     @Published private(set) var phoneVerificationResendAvailableAt = Date()
     @Published private(set) var emailVerificationStep: EmailVerificationStep = .none
     @Published private(set) var emailVerificationDemoCode = ""
+    private var pendingNewEmailForChange = ""
 
     init() {
         if !loadPersistedAuthState() {
@@ -171,6 +172,56 @@ final class AppState: ObservableObject {
         return true
     }
 
+    func loginWithApple(expectedRole: UserRole) -> Bool {
+        socialSignIn(provider: "apple", displayName: expectedRole == .worker ? "Apple Worker" : "Apple Employer", expectedRole: expectedRole)
+    }
+
+    func loginWithGoogle(expectedRole: UserRole) -> Bool {
+        socialSignIn(provider: "google", displayName: expectedRole == .worker ? "Google Worker" : "Google Employer", expectedRole: expectedRole)
+    }
+
+    private func socialSignIn(provider: String, displayName: String, expectedRole: UserRole) -> Bool {
+        if let existing = users.first(where: { $0.email == "\(provider).\(expectedRole.rawValue)@quickgig.app" && $0.role == expectedRole }) {
+            currentUser = existing
+            shouldRequestLocationPermission = false
+            authErrorMessage = nil
+            beginPhoneVerificationIfNeeded()
+            persistAuthState()
+            return true
+        }
+
+        let user = AppUser(
+            id: UUID(),
+            name: displayName,
+            phone: generateUniqueDemoPhone(),
+            isPhoneVerified: true,
+            email: "\(provider).\(expectedRole.rawValue)@quickgig.app",
+            isEmailVerified: true,
+            password: "",
+            role: expectedRole,
+            resumeSummary: "",
+            isVerifiedEmployer: expectedRole == .employer,
+            rating: 0,
+            reviewsCount: 0
+        )
+        users.append(user)
+        currentUser = user
+        shouldRequestLocationPermission = false
+        authErrorMessage = nil
+        resetPhoneVerificationSession()
+        persistAuthState()
+        return true
+    }
+
+    private func generateUniqueDemoPhone() -> String {
+        var phone: String
+        repeat {
+            let suffix = String(format: "%09d", Int.random(in: 0...999_999_999))
+            phone = "380\(suffix)"
+        } while users.contains(where: { $0.phone == phone })
+        return phone
+    }
+
     func updateCurrentUserEmail(_ email: String) -> Bool {
         guard let currentUser else { return false }
         let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -225,9 +276,39 @@ final class AppState: ObservableObject {
 
     func beginEmailChange() {
         guard let currentUser, currentUser.isEmailVerified, !currentUser.email.isEmpty else { return }
+        emailVerificationStep = .enterChangeEmails
+        emailVerificationDemoCode = ""
+        pendingNewEmailForChange = ""
+        authErrorMessage = nil
+    }
+
+    func startEmailChange(oldEmail: String, newEmail: String) -> Bool {
+        guard emailVerificationStep == .enterChangeEmails else { return false }
+        guard let currentUser else { return false }
+
+        let normalizedOld = oldEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedNew = newEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        guard normalizedOld == currentUser.email.lowercased() else {
+            authErrorMessage = "Стара пошта не збігається з поточною"
+            return false
+        }
+
+        guard isValidEmail(normalizedNew) else {
+            authErrorMessage = "Введіть коректний email"
+            return false
+        }
+
+        guard normalizedNew != normalizedOld else {
+            authErrorMessage = "Нова пошта має відрізнятися від старої"
+            return false
+        }
+
+        pendingNewEmailForChange = normalizedNew
         emailVerificationStep = .verifyOldEmail
         emailVerificationDemoCode = generate4DigitCode()
         authErrorMessage = nil
+        return true
     }
 
     func confirmOldEmailForChange(code: String) -> Bool {
@@ -236,27 +317,10 @@ final class AppState: ObservableObject {
             authErrorMessage = "Невірний код зі старої пошти"
             return false
         }
-        emailVerificationStep = .enterNewEmail
-        emailVerificationDemoCode = ""
-        authErrorMessage = nil
-        return true
-    }
 
-    func submitNewEmailForChange(_ email: String) -> Bool {
-        guard emailVerificationStep == .enterNewEmail else { return false }
-        let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard isValidEmail(normalized) else {
-            authErrorMessage = "Введіть коректний email"
-            return false
-        }
-        guard let currentUser, let index = users.firstIndex(where: { $0.id == currentUser.id }) else { return false }
-        users[index].email = normalized
-        users[index].isEmailVerified = false
-        self.currentUser = users[index]
         emailVerificationStep = .verifyNewEmail
         emailVerificationDemoCode = generate4DigitCode()
         authErrorMessage = nil
-        persistAuthState()
         return true
     }
 
@@ -267,10 +331,18 @@ final class AppState: ObservableObject {
             return false
         }
         guard let currentUser, let index = users.firstIndex(where: { $0.id == currentUser.id }) else { return false }
+        guard !pendingNewEmailForChange.isEmpty else {
+            authErrorMessage = "Помилка зміни пошти. Спробуйте ще раз"
+            emailVerificationStep = .none
+            emailVerificationDemoCode = ""
+            return false
+        }
+        users[index].email = pendingNewEmailForChange
         users[index].isEmailVerified = true
         self.currentUser = users[index]
         emailVerificationStep = .none
         emailVerificationDemoCode = ""
+        pendingNewEmailForChange = ""
         authErrorMessage = nil
         persistAuthState()
         return true
@@ -318,18 +390,19 @@ final class AppState: ObservableObject {
         persistAuthState()
     }
 
-    func addShift(title: String, details: String, pay: Int, startDate: Date, endDate: Date, coordinate: CLLocationCoordinate2D, workFormat: WorkFormat, requiredWorkers: Int) {
+    func addShift(title: String, details: String, address: String, pay: Int, startDate: Date, endDate: Date, coordinate: CLLocationCoordinate2D, workFormat: WorkFormat, requiredWorkers: Int) {
         guard let currentUser, currentUser.role == .employer else { return }
         let finalCoordinate = UkraineRegion.contains(coordinate) ? coordinate : UkraineRegion.center
         let cityName = cityNameForCoordinate(finalCoordinate)
-        let autoAddress = "м. \(cityName), локація на мапі"
+        let trimmedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalAddress = trimmedAddress.isEmpty ? "м. \(cityName), локація на мапі" : trimmedAddress
 
         shifts.append(
             JobShift(
                 id: UUID(),
                 title: title,
                 details: details,
-                address: autoAddress,
+                address: finalAddress,
                 pay: pay,
                 startDate: startDate,
                 endDate: endDate,
@@ -354,6 +427,7 @@ final class AppState: ObservableObject {
                 shiftId: shiftId,
                 workerId: currentUser.id,
                 status: .pending,
+                progressStatus: .scheduled,
                 createdAt: createdAt,
                 respondBy: Calendar.current.date(byAdding: .hour, value: employerResponseSLAHours, to: createdAt) ?? createdAt
             )
@@ -387,6 +461,9 @@ final class AppState: ObservableObject {
         }
 
         applications[index].status = status
+        if status != .accepted {
+            applications[index].progressStatus = .scheduled
+        }
         if status != .pending {
             reminderTimestamps[applications[index].id] = nil
         }
@@ -394,6 +471,77 @@ final class AppState: ObservableObject {
             notifyStatusChangeIfNeeded(for: applications[index])
         }
         syncShiftCapacity(for: shiftId)
+    }
+
+    func updateWorkProgressStatus(applicationId: UUID, to newStatus: WorkProgressStatus) -> Bool {
+        guard let index = applications.firstIndex(where: { $0.id == applicationId }) else { return false }
+        guard applications[index].status == .accepted else { return false }
+        guard let shift = shift(by: applications[index].shiftId) else { return false }
+        guard let employer = currentUser, employer.id == shift.employerId, employer.role == .employer else { return false }
+
+        let currentStatus = applications[index].progressStatus
+        guard canMoveProgress(from: currentStatus, to: newStatus) else { return false }
+
+        applications[index].progressStatus = newStatus
+        notifyWorkProgressChanged(application: applications[index], shift: shift, old: currentStatus, new: newStatus)
+        return true
+    }
+
+    func advanceWorkProgressStatus(applicationId: UUID) -> Bool {
+        guard let application = applications.first(where: { $0.id == applicationId }) else { return false }
+        let nextStatus: WorkProgressStatus
+        switch application.progressStatus {
+        case .scheduled:
+            nextStatus = .inProgress
+        case .inProgress:
+            nextStatus = .completed
+        case .completed:
+            nextStatus = .paid
+        case .paid:
+            return false
+        }
+        return updateWorkProgressStatus(applicationId: applicationId, to: nextStatus)
+    }
+
+    func guaranteeStateText(for application: ShiftApplication) -> String {
+        switch application.progressStatus {
+        case .scheduled:
+            return "Зміна запланована. Оплата буде зафіксована після завершення роботи."
+        case .inProgress:
+            return "Зміна в роботі. Оплата зарезервована до завершення."
+        case .completed:
+            return "Роботу завершено. Роботодавець має провести оплату."
+        case .paid:
+            return "Оплату підтверджено."
+        }
+    }
+
+    private func canMoveProgress(from oldStatus: WorkProgressStatus, to newStatus: WorkProgressStatus) -> Bool {
+        switch (oldStatus, newStatus) {
+        case (.scheduled, .inProgress), (.inProgress, .completed), (.completed, .paid):
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func notifyWorkProgressChanged(application: ShiftApplication, shift: JobShift, old: WorkProgressStatus, new: WorkProgressStatus) {
+        guard old != new else { return }
+        let workerName = user(by: application.workerId)?.name ?? "Працівник"
+
+        addInAppNotification(
+            for: application.workerId,
+            title: "Оновлено статус оплати",
+            message: "Зміна «\(shift.title)»: \(new.title).",
+            kind: new == .paid ? .success : .info
+        )
+
+        addInAppNotification(
+            for: shift.employerId,
+            title: "Статус співпраці оновлено",
+            message: "\(workerName): \(new.title.lowercased()) по зміні «\(shift.title)».",
+            kind: .info
+        )
     }
 
     func application(for shiftId: UUID, workerId: UUID) -> ShiftApplication? {
@@ -517,8 +665,16 @@ final class AppState: ObservableObject {
         )
     }
 
-    func addReview(to userId: UUID, stars: Int, comment: String) {
-        guard let currentUser, currentUser.id != userId else { return }
+    func addReview(to userId: UUID, for shiftId: UUID, stars: Int, comment: String) -> Bool {
+        guard let currentUser, currentUser.id != userId else { return false }
+        guard canLeaveReview(from: currentUser.id, to: userId, for: shiftId) else {
+            authErrorMessage = "Відгук можна залишити лише після завершеної співпраці"
+            return false
+        }
+        guard !hasReview(from: currentUser.id, to: userId, for: shiftId) else {
+            authErrorMessage = "Ви вже залишили відгук за цю зміну"
+            return false
+        }
 
         let clampedStars = min(5, max(1, stars))
         reviews.append(
@@ -526,12 +682,39 @@ final class AppState: ObservableObject {
                 id: UUID(),
                 fromUserId: currentUser.id,
                 toUserId: userId,
+                shiftId: shiftId,
                 stars: clampedStars,
                 comment: comment.trimmingCharacters(in: .whitespacesAndNewlines),
                 date: Date()
             )
         )
         recalculateRating(for: userId)
+        authErrorMessage = nil
+        return true
+    }
+
+    func canLeaveReview(from fromUserId: UUID, to toUserId: UUID, for shiftId: UUID, now: Date = Date()) -> Bool {
+        guard let shift = shift(by: shiftId), shift.endDate <= now else { return false }
+        let accepted = applications.filter { $0.shiftId == shiftId && $0.status == .accepted }
+        guard !accepted.isEmpty else { return false }
+
+        let fromIsEmployer = fromUserId == shift.employerId
+        let toIsEmployer = toUserId == shift.employerId
+        if fromIsEmployer == toIsEmployer { return false }
+
+        if fromIsEmployer {
+            return accepted.contains(where: { $0.workerId == toUserId })
+        } else {
+            return accepted.contains(where: { $0.workerId == fromUserId }) && toIsEmployer
+        }
+    }
+
+    func hasReview(from fromUserId: UUID, to toUserId: UUID, for shiftId: UUID) -> Bool {
+        reviews.contains {
+            $0.fromUserId == fromUserId &&
+            $0.toUserId == toUserId &&
+            $0.shiftId == shiftId
+        }
     }
 
     func updateCurrentUserResume(_ text: String) {
@@ -807,10 +990,7 @@ final class AppState: ObservableObject {
         recalculateRating(for: worker1.id)
         recalculateRating(for: worker2.id)
 
-        applications = [
-            ShiftApplication(id: UUID(), shiftId: shifts.first?.id ?? UUID(), workerId: worker1.id, status: .accepted, createdAt: now, respondBy: now),
-            ShiftApplication(id: UUID(), shiftId: shifts.dropFirst().first?.id ?? UUID(), workerId: worker2.id, status: .pending, createdAt: now, respondBy: Calendar.current.date(byAdding: .hour, value: employerResponseSLAHours, to: now) ?? now)
-        ]
+        applications = buildDemoApplications(shifts: shifts, worker1: worker1, worker2: worker2, now: now)
 
         for shift in shifts {
             syncShiftCapacity(for: shift.id)
@@ -915,24 +1095,7 @@ final class AppState: ObservableObject {
         recalculateRating(for: worker1.id)
         recalculateRating(for: worker2.id)
 
-        applications = [
-            ShiftApplication(
-                id: UUID(),
-                shiftId: shifts.first?.id ?? UUID(),
-                workerId: worker1.id,
-                status: .accepted,
-                createdAt: now,
-                respondBy: now
-            ),
-            ShiftApplication(
-                id: UUID(),
-                shiftId: shifts.dropFirst().first?.id ?? UUID(),
-                workerId: worker2.id,
-                status: .pending,
-                createdAt: now,
-                respondBy: Calendar.current.date(byAdding: .hour, value: employerResponseSLAHours, to: now) ?? now
-            )
-        ]
+        applications = buildDemoApplications(shifts: shifts, worker1: worker1, worker2: worker2, now: now)
 
         for shift in shifts {
             syncShiftCapacity(for: shift.id)
@@ -1001,7 +1164,82 @@ final class AppState: ObservableObject {
             }
         }
 
+        // Make a part of shifts completed/past to test completed activity flows.
+        for index in demoShifts.indices.prefix(10) {
+            let duration = demoShifts[index].endDate.timeIntervalSince(demoShifts[index].startDate)
+            let newStart = calendar.date(byAdding: .day, value: -(index + 2), to: now) ?? now
+            demoShifts[index].startDate = newStart
+            demoShifts[index].endDate = newStart.addingTimeInterval(max(3600, duration))
+        }
+
         return demoShifts
+    }
+
+    private func buildDemoApplications(shifts: [JobShift], worker1: AppUser, worker2: AppUser, now: Date) -> [ShiftApplication] {
+        guard !shifts.isEmpty else { return [] }
+        var items: [ShiftApplication] = []
+
+        for (index, shift) in shifts.prefix(50).enumerated() {
+            let primaryWorker = index.isMultiple(of: 2) ? worker1 : worker2
+            let primaryStatus: ApplicationStatus
+            if index % 6 == 0 {
+                primaryStatus = .pending
+            } else if index % 9 == 0 {
+                primaryStatus = .rejected
+            } else {
+                primaryStatus = .accepted
+            }
+
+            let primaryCreatedAt = Calendar.current.date(byAdding: .hour, value: -(index * 2), to: now) ?? now
+            let primaryRespondBy = Calendar.current.date(byAdding: .hour, value: employerResponseSLAHours, to: primaryCreatedAt) ?? primaryCreatedAt
+            items.append(
+                ShiftApplication(
+                    id: UUID(),
+                    shiftId: shift.id,
+                    workerId: primaryWorker.id,
+                    status: primaryStatus,
+                    progressStatus: primaryStatus == .accepted ? demoProgressStatus(for: shift, index: index) : .scheduled,
+                    createdAt: primaryCreatedAt,
+                    respondBy: primaryRespondBy
+                )
+            )
+
+            let secondaryWorker = primaryWorker.id == worker1.id ? worker2 : worker1
+            let secondaryStatus: ApplicationStatus
+            if index % 8 == 0 {
+                secondaryStatus = .pending
+            } else if index % 5 == 0 || shift.endDate <= now {
+                secondaryStatus = .accepted
+            } else {
+                secondaryStatus = .rejected
+            }
+
+            let secondaryCreatedAt = Calendar.current.date(byAdding: .hour, value: -((index * 2) + 1), to: now) ?? now
+            let secondaryRespondBy = Calendar.current.date(byAdding: .hour, value: employerResponseSLAHours, to: secondaryCreatedAt) ?? secondaryCreatedAt
+            items.append(
+                ShiftApplication(
+                    id: UUID(),
+                    shiftId: shift.id,
+                    workerId: secondaryWorker.id,
+                    status: secondaryStatus,
+                    progressStatus: secondaryStatus == .accepted ? demoProgressStatus(for: shift, index: index + 1) : .scheduled,
+                    createdAt: secondaryCreatedAt,
+                    respondBy: secondaryRespondBy
+                )
+            )
+        }
+
+        return items
+    }
+
+    private func demoProgressStatus(for shift: JobShift, index: Int) -> WorkProgressStatus {
+        if shift.endDate <= Date() {
+            return index.isMultiple(of: 2) ? .paid : .completed
+        }
+        if shift.startDate <= Date() {
+            return .inProgress
+        }
+        return .scheduled
     }
 
     private func cityNameForCoordinate(_ coordinate: CLLocationCoordinate2D) -> String {

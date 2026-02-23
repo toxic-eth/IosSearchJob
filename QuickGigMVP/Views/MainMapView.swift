@@ -36,6 +36,11 @@ private enum WorkFormatFilter: String, CaseIterable, Identifiable {
     }
 }
 
+private enum MapDimensionMode {
+    case twoD
+    case threeD
+}
+
 private struct CityOption: Identifiable {
     let id = UUID()
     let name: String
@@ -72,13 +77,17 @@ struct MainMapView: View {
     @State private var showCreateShift = false
     @State private var showFiltersSheet = false
     @State private var selectedCity = Self.cityOptions[0]
-
-    @State private var cameraPosition: MapCameraPosition = .region(
-        MKCoordinateRegion(
-            center: Self.cityOptions[0].coordinate,
-            span: MKCoordinateSpan(latitudeDelta: Self.cityOptions[0].latitudeDelta, longitudeDelta: Self.cityOptions[0].longitudeDelta)
-        )
-    )
+    @State private var skipCityAutoCenter = false
+    @State private var mapDimensionMode: MapDimensionMode = .twoD
+    @State private var mapHeading: CLLocationDirection = 0
+    @State private var mapPitch: CGFloat = 0
+    @State private var mapZoom: CGFloat = 11.8
+    @State private var mapCenterCoordinate = Self.cityOptions[0].coordinate
+    @State private var isDrawingArea = false
+    @State private var drawingPoints: [CGPoint] = []
+    @State private var drawnAreaCoordinates: [CLLocationCoordinate2D] = []
+    @State private var drawPointsToConvert: [CGPoint] = []
+    @State private var mapboxCameraUpdate: MapboxCameraUpdate?
 
     private static let cityOptions: [CityOption] = [
         CityOption(name: "Київ", coordinate: CLLocationCoordinate2D(latitude: 50.4501, longitude: 30.5234), latitudeDelta: 0.16, longitudeDelta: 0.16, radiusKm: 35),
@@ -90,19 +99,23 @@ struct MainMapView: View {
 
     private var filteredShifts: [JobShift] {
         let role = appState.currentUser?.role
+        let isWorkerRole = role == .worker
 
         return appState.shifts
             .filter { shift in
-                let visibleByStatus = role == .worker ? shift.status == .open : true
+                let visibleByStatus = isWorkerRole ? shift.status == .open : true
                 let employer = appState.user(by: shift.employerId)
-                let verifiedMatch = role == .worker ? (!verifiedOnly || (employer?.isVerifiedEmployer == true)) : true
+                let verifiedMatch = isWorkerRole ? (!verifiedOnly || (employer?.isVerifiedEmployer == true)) : true
                 let textMatch = searchText.isEmpty || shift.title.localizedCaseInsensitiveContains(searchText) || shift.details.localizedCaseInsensitiveContains(searchText)
+                let mapFormatMatch = discoveryMode == .map ? shift.workFormat == .offline : true
 
                 return UkraineRegion.contains(shift.coordinate) &&
                     visibleByStatus &&
                     verifiedMatch &&
+                    mapFormatMatch &&
                     matchesWorkFormat(shift.workFormat) &&
-                    isWithinUserDistance(shift) &&
+                    (isWorkerRole ? isWithinUserDistance(shift) : true) &&
+                    matchesDrawnArea(shift.coordinate) &&
                     matchesDesiredDateTime(shift.startDate) &&
                     textMatch &&
                     Double(shift.pay) >= minPay &&
@@ -176,10 +189,14 @@ struct MainMapView: View {
     private var dashboard: some View {
         NavigationStack {
             Group {
-                if discoveryMode == .map {
-                    fullScreenMapMode
+                if appState.currentUser?.role == .employer {
+                    employerDashboard
                 } else {
-                    listMode
+                    if discoveryMode == .map {
+                        fullScreenMapMode
+                    } else {
+                        listMode
+                    }
                 }
             }
             .navigationTitle("")
@@ -189,15 +206,25 @@ struct MainMapView: View {
                 ShiftDetailView(shift: shift)
                     .environmentObject(appState)
             }
-            .sheet(isPresented: $showCreateShift) {
-                AddShiftView(centerCoordinate: selectedCity.coordinate)
-                    .environmentObject(appState)
-            }
+                .sheet(isPresented: $showCreateShift) {
+                    AddShiftView(centerCoordinate: selectedCity.coordinate)
+                        .environmentObject(appState)
+                }
             .sheet(isPresented: $showFiltersSheet) {
                 FiltersSheet(
                     language: language,
                     isWorker: appState.currentUser?.role == .worker,
                     canFilterByDistance: locationService.currentLocation != nil,
+                    cityNames: Self.cityOptions.map(\.name),
+                    selectedCityName: Binding(
+                        get: { selectedCity.name },
+                        set: { newValue in
+                            if let matched = Self.cityOptions.first(where: { $0.name == newValue }) {
+                                selectedCity = matched
+                            }
+                        }
+                    ),
+                    filteredCount: filteredShifts.count,
                     minPay: $minPay,
                     maxDuration: $maxDuration,
                     maxDistanceKm: $maxDistanceKm,
@@ -218,7 +245,11 @@ struct MainMapView: View {
                 refreshRouteDistances()
             }
             .onChange(of: selectedCity.name) { _, _ in
-                centerOnSelectedCity(animated: true)
+                if skipCityAutoCenter {
+                    skipCityAutoCenter = false
+                } else {
+                    centerOnSelectedCity(animated: true)
+                }
                 refreshRouteDistances()
             }
             .onChange(of: locationService.currentLocation?.latitude) { _, _ in
@@ -228,6 +259,101 @@ struct MainMapView: View {
                 refreshRouteDistances()
             }
         }
+    }
+
+    private var employerDashboard: some View {
+        ZStack {
+            AppBackgroundView()
+
+            ScrollView {
+                VStack(spacing: 12) {
+                    employerSummaryCard
+
+                    Button {
+                        showCreateShift = true
+                    } label: {
+                        Label("Створити вакансію", systemImage: "plus")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.purple)
+
+                    if employerShifts.isEmpty {
+                        Text("У вас ще немає вакансій")
+                            .font(.subheadline)
+                            .foregroundStyle(secondaryOnBackground)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .glassCard()
+                    } else {
+                        LazyVStack(spacing: 10) {
+                            ForEach(employerShifts) { shift in
+                                employerShiftRow(shift)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 24)
+            }
+        }
+    }
+
+    private var employerShifts: [JobShift] {
+        guard let currentUserId = appState.currentUser?.id else { return [] }
+        return appState.shifts
+            .filter { $0.employerId == currentUserId }
+            .sorted { $0.startDate > $1.startDate }
+    }
+
+    private var employerSummaryCard: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Мої вакансії")
+                    .font(.caption)
+                    .foregroundStyle(secondaryOnBackground)
+                Text("\(employerShifts.count)")
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .foregroundStyle(primaryOnBackground)
+                Text("Активні та заплановані зміни")
+                    .font(.footnote)
+                    .foregroundStyle(secondaryOnBackground)
+            }
+            Spacer()
+            Image(systemName: "person.3.sequence.fill")
+                .font(.system(size: 30))
+                .foregroundStyle(secondaryOnBackground)
+        }
+        .glassCard()
+    }
+
+    private func employerShiftRow(_ shift: JobShift) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(shift.title)
+                    .font(.headline)
+                Spacer()
+                Text(shift.status.title)
+                    .font(.caption.bold())
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(shift.status == .open ? Color.purple.opacity(0.24) : Color.gray.opacity(0.22))
+                    .clipShape(Capsule())
+            }
+            Text(shift.address)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 12) {
+                Label("\(shift.pay) грн/год", systemImage: "dollarsign.circle")
+                Label("\(appState.acceptedApplicationsCount(for: shift.id))/\(shift.requiredWorkers)", systemImage: "person.3")
+                Text(shift.startDate.formatted(date: .abbreviated, time: .shortened))
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCard()
     }
 
     private var fullScreenMapMode: some View {
@@ -270,7 +396,7 @@ struct MainMapView: View {
                                 ) {
                                     focusOnShift(shift)
                                 }
-                                    .frame(width: cardWidth)
+                                    .frame(width: cardWidth, height: 164, alignment: .top)
                                     .id(shift.id)
                                 }
                             }
@@ -289,28 +415,19 @@ struct MainMapView: View {
                                 centeredCarouselShiftId = shiftIds.first
                             }
                         }
+                        .onChange(of: centeredCarouselShiftId) { _, newId in
+                            guard focusedShiftOnMap == nil,
+                                  let newId,
+                                  let shift = filteredShifts.first(where: { $0.id == newId }) else { return }
+                            centerOnCarouselShift(shift, animated: true)
+                        }
                     }
                     .padding(.bottom, 12)
                 }
 
-                if locationService.currentLocation != nil {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            Button {
-                                centerOnUserLocation(animated: true)
-                            } label: {
-                                Image(systemName: "location.fill")
-                                    .font(.headline)
-                                    .foregroundStyle(.white)
-                            }
-                            .buttonStyle(FrostedButtonStyle())
-                        }
-                    }
-                    .padding(.trailing, 14)
-                    .padding(.bottom, focusedShiftOnMap == nil ? 142 : 22)
-                }
+                rightMapControls
+                    .padding(.trailing, 12)
+                    .padding(.top, focusedShiftOnMap == nil ? 10 : 8)
 
                 if let shift = focusedShiftOnMap {
                     ShiftMapBottomSheet(
@@ -406,7 +523,6 @@ struct MainMapView: View {
             .pickerStyle(.segmented)
 
             HStack(spacing: 10) {
-                cityMenu
                 TextField(I18n.t("search.placeholder", language), text: $searchText)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
@@ -451,56 +567,101 @@ struct MainMapView: View {
         .frostedPanel()
     }
 
-    private var cityMenu: some View {
-        Menu {
-            ForEach(Self.cityOptions) { city in
-                Button {
-                    selectedCity = city
-                } label: {
-                    HStack {
-                        Text(city.name)
-                        if city.name == selectedCity.name {
-                            Image(systemName: "checkmark")
-                        }
+    private var cityMap: some View {
+        MapboxJobsMapView(
+            shifts: filteredShifts,
+            focusedShiftId: focusedShiftOnMap?.id,
+            drawnPolygon: drawnAreaCoordinates,
+            cameraUpdate: mapboxCameraUpdate,
+            pointsToConvert: drawPointsToConvert,
+            isDarkTheme: isDarkTheme,
+            onShiftTap: { tappedShift in
+                focusOnShift(tappedShift)
+            },
+            onCameraChange: { center, heading, pitch, zoom in
+                mapCenterCoordinate = center
+                mapHeading = heading
+                mapPitch = pitch
+                mapZoom = zoom
+            },
+            onConvertedPoints: { coordinates in
+                if coordinates.count >= 3 {
+                    drawnAreaCoordinates = coordinates
+                } else {
+                    drawnAreaCoordinates = []
+                }
+                drawPointsToConvert = []
+            }
+        )
+        .overlay {
+            if isDrawingArea {
+                Path { path in
+                    guard let first = drawingPoints.first else { return }
+                    path.move(to: first)
+                    for point in drawingPoints.dropFirst() {
+                        path.addLine(to: point)
                     }
                 }
+                .stroke(.purple.opacity(0.95), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                .contentShape(Rectangle())
+                .highPriorityGesture(drawingGesture())
             }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "location.circle.fill")
-                Text(selectedCity.name)
-                    .lineLimit(1)
-            }
-            .foregroundStyle(primaryOnBackground)
         }
-        .buttonStyle(FrostedButtonStyle())
     }
 
-    private var cityMap: some View {
-        Map(position: $cameraPosition) {
-            if let userCoordinate = locationService.currentLocation {
-                Annotation("Ваше місце", coordinate: userCoordinate) {
-                    UserLocationDotView()
-                }
+    private var rightMapControls: some View {
+        VStack(spacing: 10) {
+            mapControlButton(action: {
+                resetNorthUp()
+            }) {
+                Image(systemName: "location.north.line.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .rotationEffect(.degrees(mapHeading))
             }
 
-            ForEach(filteredShifts) { shift in
-                Annotation(shift.title, coordinate: shift.coordinate) {
-                    Button {
-                        focusOnShift(shift)
-                    } label: {
-                        ShiftPinView(pay: shift.pay, isFocused: focusedShiftOnMap?.id == shift.id)
-                    }
-                }
+            mapControlButton(action: {
+                centerOnUserLocationAndSyncCity(animated: true)
+            }) {
+                Image(systemName: "location.fill")
+                    .font(.system(size: 18, weight: .semibold))
+            }
+
+            mapControlButton(action: {
+                toggleMapDimension()
+            }) {
+                Text(mapDimensionMode == .twoD ? "2D" : "3D")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+            }
+
+            mapControlButton(action: {
+                toggleDrawingMode()
+            }, foreground: isDrawingArea ? .purple : primaryOnBackground) {
+                Image(systemName: isDrawingArea ? "checkmark" : "pencil")
+                    .font(.system(size: 18, weight: .semibold))
             }
         }
-        .mapStyle(
-            .standard(
-                elevation: .flat,
-                pointsOfInterest: .excludingAll,
-                showsTraffic: false
-            )
-        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        .allowsHitTesting(focusedShiftOnMap == nil)
+        .opacity(focusedShiftOnMap == nil ? 1 : 0)
+    }
+
+    private func mapControlButton<Content: View>(
+        action: @escaping () -> Void,
+        foreground: Color? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        Button(action: action) {
+            content()
+                .foregroundStyle(foreground ?? primaryOnBackground)
+                .frame(width: 48, height: 48)
+                .background(.ultraThinMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(isDarkTheme ? .white.opacity(0.22) : .black.opacity(0.12), lineWidth: 1)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private var summaryCard: some View {
@@ -527,42 +688,38 @@ struct MainMapView: View {
     }
 
     private func centerOnSelectedCity(animated: Bool) {
-        let region = MKCoordinateRegion(
+        applyMapboxCameraUpdate(
             center: selectedCity.coordinate,
-            span: MKCoordinateSpan(latitudeDelta: selectedCity.latitudeDelta, longitudeDelta: selectedCity.longitudeDelta)
+            zoom: zoomLevel(forLatitudeDelta: selectedCity.latitudeDelta),
+            bearing: mapHeading,
+            pitch: mapDimensionMode == .threeD ? 58 : 0,
+            animated: animated
         )
-
-        if animated {
-            withAnimation(.easeInOut(duration: 0.35)) {
-                cameraPosition = .region(region)
-            }
-        } else {
-            cameraPosition = .region(region)
-        }
     }
 
     private func focusOnShift(_ shift: JobShift) {
-        sheetVisibleFraction = 0.5
-        focusedShiftOnMap = shift
-        recenterFocusedShift(shift, animated: true)
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.88, blendDuration: 0.12)) {
+            sheetVisibleFraction = 0.5
+            focusedShiftOnMap = shift
+        }
+        recenterFocusedShift(shift, animated: true, duration: 0.36)
     }
 
-    private func recenterFocusedShift(_ shift: JobShift, animated: Bool) {
-        let span = MKCoordinateSpan(latitudeDelta: 0.035, longitudeDelta: 0.035)
-        let verticalShift = span.latitudeDelta * (sheetVisibleFraction / 2.0)
+    private func recenterFocusedShift(_ shift: JobShift, animated: Bool, duration: Double = 0.24) {
+        let latitudeDelta = 0.035
+        let verticalShift = latitudeDelta * (sheetVisibleFraction / 2.0)
         let center = CLLocationCoordinate2D(
             latitude: shift.coordinate.latitude - verticalShift,
             longitude: shift.coordinate.longitude
         )
-        let region = MKCoordinateRegion(center: center, span: span)
-
-        if animated {
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
-                cameraPosition = .region(region)
-            }
-        } else {
-            cameraPosition = .region(region)
-        }
+        applyMapboxCameraUpdate(
+            center: center,
+            zoom: zoomLevel(forLatitudeDelta: latitudeDelta),
+            bearing: mapHeading,
+            pitch: mapDimensionMode == .threeD ? max(mapPitch, 58) : 0,
+            animated: animated,
+            duration: duration
+        )
     }
 
     private func centerOnUserLocation(animated: Bool) {
@@ -571,28 +728,168 @@ struct MainMapView: View {
             return
         }
 
-        let span = MKCoordinateSpan(latitudeDelta: 0.03, longitudeDelta: 0.03)
+        let latitudeDelta = 0.03
         // In regular map mode keep the user marker lower (near the vacancies lane),
         // and when bottom sheet is opened keep marker in the visible upper area.
         let verticalShift: Double
         if focusedShiftOnMap == nil {
-            verticalShift = -span.latitudeDelta * 0.18
+            verticalShift = -latitudeDelta * 0.18
         } else {
-            verticalShift = span.latitudeDelta * (sheetVisibleFraction / 2.0)
+            verticalShift = latitudeDelta * (sheetVisibleFraction / 2.0)
         }
         let center = CLLocationCoordinate2D(
             latitude: user.latitude - verticalShift,
             longitude: user.longitude
         )
-        let region = MKCoordinateRegion(center: center, span: span)
+        applyMapboxCameraUpdate(
+            center: center,
+            zoom: zoomLevel(forLatitudeDelta: latitudeDelta),
+            bearing: mapHeading,
+            pitch: mapDimensionMode == .threeD ? max(mapPitch, 58) : 0,
+            animated: animated
+        )
+    }
 
-        if animated {
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
-                cameraPosition = .region(region)
-            }
-        } else {
-            cameraPosition = .region(region)
+    private func centerOnUserLocationAndSyncCity(animated: Bool) {
+        guard let user = locationService.currentLocation else {
+            locationService.requestPermission()
+            return
         }
+
+        if let nearestCity = nearestCityOption(to: user), nearestCity.name != selectedCity.name {
+            skipCityAutoCenter = true
+            selectedCity = nearestCity
+        }
+
+        centerOnUserLocation(animated: animated)
+    }
+
+    private func nearestCityOption(to coordinate: CLLocationCoordinate2D) -> CityOption? {
+        let userPoint = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        return Self.cityOptions.min { lhs, rhs in
+            let lhsPoint = CLLocation(latitude: lhs.coordinate.latitude, longitude: lhs.coordinate.longitude)
+            let rhsPoint = CLLocation(latitude: rhs.coordinate.latitude, longitude: rhs.coordinate.longitude)
+            return userPoint.distance(from: lhsPoint) < userPoint.distance(from: rhsPoint)
+        }
+    }
+
+    private func centerOnCarouselShift(_ shift: JobShift, animated: Bool) {
+        applyMapboxCameraUpdate(
+            center: shift.coordinate,
+            zoom: zoomLevel(forLatitudeDelta: 0.03),
+            bearing: mapHeading,
+            pitch: mapDimensionMode == .threeD ? max(mapPitch, 58) : 0,
+            animated: animated,
+            duration: 0.24
+        )
+    }
+
+    private func resetNorthUp() {
+        applyMapboxCameraUpdate(
+            center: mapCenterCoordinate,
+            zoom: mapZoom,
+            bearing: 0,
+            pitch: mapPitch,
+            animated: true
+        )
+    }
+
+    private func toggleMapDimension() {
+        mapDimensionMode = mapDimensionMode == .twoD ? .threeD : .twoD
+        let updatedPitch: CGFloat = mapDimensionMode == .threeD ? 58 : 0
+        mapPitch = updatedPitch
+        applyMapboxCameraUpdate(
+            center: mapCenterCoordinate,
+            zoom: mapZoom,
+            bearing: mapHeading,
+            pitch: updatedPitch,
+            animated: true
+        )
+    }
+
+    private func toggleDrawingMode() {
+        if isDrawingArea {
+            isDrawingArea = false
+            if drawingPoints.count < 3 {
+                drawnAreaCoordinates = []
+            }
+            drawingPoints = []
+        } else {
+            drawingPoints = []
+            drawnAreaCoordinates = []
+            isDrawingArea = true
+        }
+    }
+
+    private func drawingGesture() -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .local)
+            .onChanged { value in
+                guard isDrawingArea else { return }
+                let point = value.location
+                if let last = drawingPoints.last {
+                    let dx = point.x - last.x
+                    let dy = point.y - last.y
+                    if (dx * dx + dy * dy) < 20 { return }
+                }
+                drawingPoints.append(point)
+            }
+            .onEnded { _ in
+                guard isDrawingArea else { return }
+                drawPointsToConvert = drawingPoints
+                drawingPoints = []
+                isDrawingArea = false
+            }
+    }
+
+    private func applyMapboxCameraUpdate(
+        center: CLLocationCoordinate2D,
+        zoom: CGFloat,
+        bearing: CLLocationDirection,
+        pitch: CGFloat,
+        animated: Bool,
+        duration: Double = 0.32
+    ) {
+        mapboxCameraUpdate = MapboxCameraUpdate(
+            id: UUID(),
+            center: center,
+            zoom: min(max(zoom, 3), 18.5),
+            bearing: bearing,
+            pitch: min(max(pitch, 0), 70),
+            animated: animated,
+            duration: duration
+        )
+    }
+
+    private func zoomLevel(forLatitudeDelta delta: Double) -> CGFloat {
+        let clamped = max(delta, 0.001)
+        let zoom = log2(360.0 / clamped)
+        return CGFloat(min(max(zoom, 3), 18.5))
+    }
+
+    private func matchesDrawnArea(_ coordinate: CLLocationCoordinate2D) -> Bool {
+        guard drawnAreaCoordinates.count >= 3 else { return true }
+        return isInsidePolygon(coordinate, polygon: drawnAreaCoordinates)
+    }
+
+    private func isInsidePolygon(_ coordinate: CLLocationCoordinate2D, polygon: [CLLocationCoordinate2D]) -> Bool {
+        let x = coordinate.longitude
+        let y = coordinate.latitude
+        var isInside = false
+        var j = polygon.count - 1
+
+        for i in 0..<polygon.count {
+            let xi = polygon[i].longitude
+            let yi = polygon[i].latitude
+            let xj = polygon[j].longitude
+            let yj = polygon[j].latitude
+
+            let intersects = ((yi > y) != (yj > y)) && (x < ((xj - xi) * (y - yi) / ((yj - yi) + 0.0000001)) + xi)
+            if intersects {
+                isInside.toggle()
+            }
+            j = i
+        }
+        return isInside
     }
 
     private func isWithinSelectedCity(_ coordinate: CLLocationCoordinate2D) -> Bool {
@@ -603,12 +900,8 @@ struct MainMapView: View {
 
     private func isWithinUserDistance(_ shift: JobShift) -> Bool {
         if shift.workFormat == .online { return true }
-        guard let userCoordinate = locationService.currentLocation else { return false }
-        if let roadDistanceKm = routeDistanceKmByShift[shift.id] {
-            return roadDistanceKm <= maxDistanceKm
-        }
-        let directKm = straightLineDistanceKm(from: userCoordinate, to: shift.coordinate)
-        return directKm <= maxDistanceKm
+        guard let distanceKm = effectiveDistanceKm(for: shift) else { return false }
+        return distanceKm <= maxDistanceKm
     }
 
     private func matchesWorkFormat(_ workFormat: WorkFormat) -> Bool {
@@ -644,6 +937,10 @@ struct MainMapView: View {
     }
 
     private func distanceForDisplay(_ shift: JobShift) -> Double? {
+        effectiveDistanceKm(for: shift)
+    }
+
+    private func effectiveDistanceKm(for shift: JobShift) -> Double? {
         guard shift.workFormat == .offline,
               let user = locationService.currentLocation else { return nil }
         return routeDistanceKmByShift[shift.id] ?? straightLineDistanceKm(from: user, to: shift.coordinate)
@@ -929,6 +1226,7 @@ private struct ShiftRow: View {
                     Text(shift.title)
                         .font(.headline)
                         .foregroundStyle(.primary)
+                        .lineLimit(1)
                     Spacer()
                     Text(shift.status.title)
                         .font(.caption.bold())
@@ -972,6 +1270,9 @@ private struct ShiftRow: View {
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                } else {
+                    Color.clear
+                        .frame(height: 16)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -985,6 +1286,9 @@ private struct FiltersSheet: View {
     let language: AppLanguage
     let isWorker: Bool
     let canFilterByDistance: Bool
+    let cityNames: [String]
+    @Binding var selectedCityName: String
+    let filteredCount: Int
     @Binding var minPay: Double
     @Binding var maxDuration: Double
     @Binding var maxDistanceKm: Double
@@ -994,68 +1298,158 @@ private struct FiltersSheet: View {
     @Binding var desiredFromTime: Date
     @Binding var desiredToTime: Date
     @Binding var verifiedOnly: Bool
+    @AppStorage("appTheme") private var appThemeRawValue = AppTheme.dark.rawValue
     @Environment(\.dismiss) private var dismiss
+
+    private var isDarkTheme: Bool {
+        resolvedTheme(from: appThemeRawValue) == .dark
+    }
+
+    private var primaryText: Color {
+        isDarkTheme ? .white : .black
+    }
+
+    private var secondaryText: Color {
+        isDarkTheme ? .white.opacity(0.85) : .black.opacity(0.75)
+    }
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Бюджет і тривалість") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("\(I18n.t("filters.min_pay", language)): \(Int(minPay)) грн/год")
-                        Slider(value: $minPay, in: 0...500, step: 10)
-                            .tint(.purple)
-                    }
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("\(I18n.t("filters.max_duration", language)): \(Int(maxDuration)) год")
-                        Slider(value: $maxDuration, in: 1...24, step: 1)
-                            .tint(.purple)
-                    }
-                }
+            ZStack {
+                AppBackgroundView()
 
-                Section("Формат") {
-                    Picker("Формат", selection: $workFormatFilter) {
-                        ForEach(WorkFormatFilter.allCases) { item in
-                            Text(item.title(language)).tag(item)
+                ScrollView {
+                    VStack(spacing: 14) {
+                        filterCard(title: "Де працюємо") {
+                            cityPickerRow
                         }
-                    }
-                    .pickerStyle(.segmented)
-                }
 
-                if canFilterByDistance {
-                    Section("Дистанція") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("\(I18n.t("filters.max_distance", language)): \(Int(maxDistanceKm)) \(I18n.t("filters.distance_km", language))")
-                            Slider(value: $maxDistanceKm, in: 1...100, step: 1)
+                        filterCard(title: "Формат роботи") {
+                            Picker("Формат", selection: $workFormatFilter) {
+                                ForEach(WorkFormatFilter.allCases) { item in
+                                    Text(item.title(language)).tag(item)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .tint(.purple)
+                        }
+
+                        filterCard(title: "Бюджет і тривалість") {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("\(I18n.t("filters.min_pay", language)): \(Int(minPay)) грн/год")
+                                    .foregroundStyle(secondaryText)
+                                Slider(value: $minPay, in: 0...500, step: 10)
+                                    .tint(.purple)
+
+                                Text("\(I18n.t("filters.max_duration", language)): \(Int(maxDuration)) год")
+                                    .foregroundStyle(secondaryText)
+                                Slider(value: $maxDuration, in: 1...24, step: 1)
+                                    .tint(.purple)
+                            }
+                        }
+
+                        if canFilterByDistance {
+                            filterCard(title: "Дистанція") {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Text("\(I18n.t("filters.max_distance", language)): \(Int(maxDistanceKm)) \(I18n.t("filters.distance_km", language))")
+                                        .foregroundStyle(secondaryText)
+                                    Slider(value: $maxDistanceKm, in: 1...100, step: 1)
+                                        .tint(.purple)
+                                }
+                            }
+                        }
+
+                        filterCard(title: "Дата і час") {
+                            Toggle("Фільтр за датою та часом", isOn: $useDateTimeFilter)
                                 .tint(.purple)
+                                .foregroundStyle(primaryText)
+
+                            if useDateTimeFilter {
+                                DatePicker("Бажана дата", selection: $desiredDate, displayedComponents: .date)
+                                    .tint(.purple)
+                                    .foregroundStyle(primaryText)
+
+                                DatePicker("Від", selection: $desiredFromTime, displayedComponents: .hourAndMinute)
+                                    .tint(.purple)
+                                    .foregroundStyle(primaryText)
+
+                                DatePicker("До", selection: $desiredToTime, displayedComponents: .hourAndMinute)
+                                    .tint(.purple)
+                                    .foregroundStyle(primaryText)
+                            }
+                        }
+
+                        if isWorker {
+                            filterCard(title: "Надійність") {
+                                Toggle(I18n.t("filters.verified", language), isOn: $verifiedOnly)
+                                    .tint(.purple)
+                                    .foregroundStyle(primaryText)
+                            }
+                        }
+
+                        Button {
+                            dismiss()
+                        } label: {
+                            Text("Показати \(filteredCount) пропозицій")
+                                .font(.system(size: 20, weight: .bold, design: .rounded))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .foregroundStyle(.white)
+                                .background(Color.purple)
+                                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                         }
                     }
-                }
-
-                Section("Дата і час") {
-                    Toggle("Фільтр за датою та часом", isOn: $useDateTimeFilter)
-                        .tint(.purple)
-                    if useDateTimeFilter {
-                        DatePicker("Бажана дата", selection: $desiredDate, displayedComponents: .date)
-                            .tint(.purple)
-                        DatePicker("Від", selection: $desiredFromTime, displayedComponents: .hourAndMinute)
-                            .tint(.purple)
-                        DatePicker("До", selection: $desiredToTime, displayedComponents: .hourAndMinute)
-                            .tint(.purple)
-                    }
-                }
-
-                if isWorker {
-                    Section("Надійність") {
-                        Toggle(I18n.t("filters.verified", language), isOn: $verifiedOnly)
-                            .tint(.purple)
-                    }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 12)
+                    .padding(.bottom, 22)
                 }
             }
             .navigationTitle("Фільтри")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Готово") { dismiss() }
+                    Button("Закрити") { dismiss() }
+                        .foregroundStyle(primaryText)
+                }
+            }
+        }
+    }
+
+    private func filterCard<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.system(size: 34, weight: .bold, design: .rounded))
+                .foregroundStyle(primaryText)
+            content()
+        }
+        .padding(16)
+        .background(.regularMaterial)
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(isDarkTheme ? .white.opacity(0.2) : .black.opacity(0.1), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+
+    private var cityPickerRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(cityNames, id: \.self) { city in
+                    Button {
+                        selectedCityName = city
+                    } label: {
+                        Text(city)
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .frame(minWidth: 130)
+                            .padding(.vertical, 14)
+                            .foregroundStyle(selectedCityName == city ? .white : primaryText)
+                            .background(
+                                selectedCityName == city
+                                    ? Color.purple
+                                    : (isDarkTheme ? Color.white.opacity(0.14) : Color.black.opacity(0.08))
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
                 }
             }
         }

@@ -68,27 +68,45 @@ struct OnboardingView: View {
                         .padding(.horizontal, 20)
                         .tag(pages.count)
                 }
-                .tabViewStyle(.page(indexDisplayMode: .always))
+                .tabViewStyle(.page(indexDisplayMode: .never))
                 .frame(maxHeight: 540)
+                .animation(.easeInOut(duration: 0.4), value: currentPage)
 
-                if currentPage < pages.count {
-                    Button(I18n.t("onb.next", language)) {
-                        currentPage += 1
+                HStack(spacing: 8) {
+                    ForEach(0..<(pages.count + 1), id: \.self) { index in
+                        Capsule()
+                            .fill(index == currentPage ? Color.white : Color.white.opacity(0.35))
+                            .frame(width: index == currentPage ? 22 : 8, height: 8)
+                            .animation(.easeInOut(duration: 0.2), value: currentPage)
                     }
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(.white)
-                    .foregroundStyle(.black)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 24)
-                } else {
-                    Text(I18n.t("onb.pick_role", language))
-                        .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.85))
-                        .padding(.bottom, 24)
                 }
+                .padding(.top, 2)
+
+                Group {
+                    if currentPage < pages.count {
+                        Button(I18n.t("onb.next", language)) {
+                            withAnimation(.easeInOut(duration: 0.38)) {
+                                currentPage += 1
+                            }
+                        }
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(.white)
+                        .foregroundStyle(.black)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                    } else {
+                        Text(I18n.t("onb.pick_role", language))
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 24)
+                .frame(height: 70)
+                .animation(.easeInOut(duration: 0.35), value: currentPage)
             }
         }
     }
@@ -111,11 +129,11 @@ struct OnboardingView: View {
                 }
 
             Text(I18n.t(page.title, language))
-                .font(.system(size: 30, weight: .bold))
+                .font(.system(size: 32, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
 
             Text(I18n.t(page.subtitle, language))
-                .font(.title3)
+                .font(.system(size: 20, weight: .medium, design: .serif))
                 .foregroundStyle(.white.opacity(0.9))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -142,31 +160,45 @@ struct OnboardingView: View {
                 }
 
             Text(I18n.t("onb.role_title", language))
-                .font(.system(size: 30, weight: .bold))
+                .font(.system(size: 32, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
 
             Text(I18n.t("onb.role_sub", language))
-                .font(.title3)
+                .font(.system(size: 19, weight: .medium, design: .serif))
                 .foregroundStyle(.white.opacity(0.9))
 
-            Button(I18n.t("onb.worker", language)) {
+            roleActionButton(
+                title: I18n.t("onb.worker", language),
+                gradient: [Color.purple.opacity(0.98), Color.indigo.opacity(0.88)]
+            ) {
                 onSelectRole(.worker)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.purple)
-            .frame(maxWidth: .infinity, minHeight: 52)
 
-            Button(I18n.t("onb.employer", language)) {
+            roleActionButton(
+                title: I18n.t("onb.employer", language),
+                gradient: [Color.indigo.opacity(0.98), Color.purple.opacity(0.84)]
+            ) {
                 onSelectRole(.employer)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.indigo)
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 52)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
         .background(.ultraThinMaterial.opacity(0.45))
         .clipShape(RoundedRectangle(cornerRadius: 24))
+    }
+
+    private func roleActionButton(title: String, gradient: [Color], action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 17, weight: .heavy, design: .rounded))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: 56)
+                .background(
+                    LinearGradient(colors: gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .shadow(color: .black.opacity(0.28), radius: 12, x: 0, y: 6)
+        }
+        .buttonStyle(.plain)
     }
 }

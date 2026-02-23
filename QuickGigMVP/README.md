@@ -7,6 +7,15 @@
 - создание смен работодателем;
 - рейтинг и отзывы 1-5 звезд в обе стороны.
 
+## Mapbox (Stage 1)
+- Mapbox SDK подключен через Swift Package Manager (`MapboxMaps`).
+- Ключ Mapbox берется из `MBXAccessToken` в Info.plist (сейчас стоит заглушка `YOUR_MAPBOX_PUBLIC_TOKEN`).
+- Чтобы изменить ключ: обнови `INFOPLIST_KEY_MBXAccessToken` в `/Users/toxic.eth/Documents/New project/QuickGigMVP/project.yml`.
+- После изменений перегенерируй проект:
+  - `xcodegen generate`
+- Рекомендуемый резолв зависимостей с отдельным кэшем:
+  - `xcodebuild -resolvePackageDependencies -project QuickGigMVP.xcodeproj -scheme QuickGigMVP -clonedSourcePackagesDirPath /tmp/quickgig-spm`
+
 ## Что внутри
 - `QuickGigMVPApp.swift` - точка входа приложения.
 - `ContentView.swift` - маршрутизация login/main.

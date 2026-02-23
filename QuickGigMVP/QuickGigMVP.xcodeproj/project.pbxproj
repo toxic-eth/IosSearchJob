@@ -12,6 +12,7 @@
 		192E351C88F8AFEF668A2524 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03136F2C8400F1F5442BE0A /* OnboardingView.swift */; };
 		2657DF99DC16FDF6B6CED59A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8FB632774EEF1A89320CFAA /* AppState.swift */; };
 		3C7B8A41DA91CA6B9CAB57C1 /* MainMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 249336023E0F0D2D4E911C04 /* MainMapView.swift */; };
+		3EAA2640A860C12071D7552C /* MapboxJobsMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFE846BEC127C159E89A23BD /* MapboxJobsMapView.swift */; };
 		4423740DBD5C313AAA8CB444 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA9A58F8B6B0D81B7404FC91 /* ProfileView.swift */; };
 		4AA1DFC50DA66FB6C0B9858D /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3930B36B26B370876C1CA684 /* Localization.swift */; };
 		4C9C49CDFCCF5B167EAE2DE1 /* AppStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54400FC6BCFF277EA9A9C349 /* AppStyle.swift */; };
@@ -24,6 +25,7 @@
 		9E7F2BB292951B1A95CF83C8 /* ShiftDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 244C116E2B6BA5B0A7B76053 /* ShiftDetailView.swift */; };
 		AFDB0521A62351AA456AFD8F /* AddShiftView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59DD79D2835116A42471AB3C /* AddShiftView.swift */; };
 		B63B10275B08661AC39C9FDA /* NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08A22F9479DF8319F4958C3D /* NotificationsView.swift */; };
+		C71717B46419929E4471D2C0 /* MapboxMaps in Frameworks */ = {isa = PBXBuildFile; productRef = 1CEDFEE7A03D72A58D3BD33C /* MapboxMaps */; };
 		C99D8860706C373538D484BD /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F254DCDF256DAF3C54F5B6E /* Models.swift */; };
 		D8E138E6F4274FB52DCBF900 /* LocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D338FB73AF734A49A62F18B /* LocationService.swift */; };
 		E537D03D47507DA9C0BF83E0 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA5888CF87E20959327F1088 /* SettingsView.swift */; };
@@ -47,14 +49,26 @@
 		C03136F2C8400F1F5442BE0A /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		C894EB9ABD4D9A6AC1BA1772 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		CA9A58F8B6B0D81B7404FC91 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		CFE846BEC127C159E89A23BD /* MapboxJobsMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapboxJobsMapView.swift; sourceTree = "<group>"; };
 		D658184857A76782E43B728C /* QuickGigMVPApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickGigMVPApp.swift; sourceTree = "<group>"; };
 		DAB082A05800D8CDB8653AB7 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		DD0B94CB1246452B3FF86CCD /* RoleSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoleSelectionView.swift; sourceTree = "<group>"; };
 		F478A1B9B3F2A2FA8B03D049 /* QuickGigMVP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = QuickGigMVP.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFrameworksBuildPhase section */
+		CD5F9D451EB24CF4AA11122B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C71717B46419929E4471D2C0 /* MapboxMaps in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
 /* Begin PBXGroup section */
-		0A1B81DA2F4A71D90088E5B6 /* Products */ = {
+		0A918AAE2F4B5E6800C422A9 /* Products */ = {
 			isa = PBXGroup;
 			name = Products;
 			sourceTree = "<group>";
@@ -85,6 +99,7 @@
 				54400FC6BCFF277EA9A9C349 /* AppStyle.swift */,
 				DAB082A05800D8CDB8653AB7 /* LoginView.swift */,
 				249336023E0F0D2D4E911C04 /* MainMapView.swift */,
+				CFE846BEC127C159E89A23BD /* MapboxJobsMapView.swift */,
 				08A22F9479DF8319F4958C3D /* NotificationsView.swift */,
 				C03136F2C8400F1F5442BE0A /* OnboardingView.swift */,
 				9E78CE607BDE74112CF6C274 /* PhoneVerificationView.swift */,
@@ -128,6 +143,7 @@
 			buildPhases = (
 				FEA49B927AE41E96A69FEBDD /* Sources */,
 				665BF829642A4C9946190B1E /* Resources */,
+				CD5F9D451EB24CF4AA11122B /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -135,6 +151,7 @@
 			);
 			name = QuickGigMVP;
 			packageProductDependencies = (
+				1CEDFEE7A03D72A58D3BD33C /* MapboxMaps */,
 			);
 			productName = QuickGigMVP;
 			productReference = F478A1B9B3F2A2FA8B03D049 /* QuickGigMVP.app */;
@@ -159,10 +176,13 @@
 			);
 			mainGroup = 131EB5051D16C934C624DBB7;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				0731FAE46940FAFD67D921A2 /* XCRemoteSwiftPackageReference "mapbox-maps-ios" */,
+			);
 			projectDirPath = "";
 			projectReferences = (
 				{
-					ProductGroup = 0A1B81DA2F4A71D90088E5B6 /* Products */;
+					ProductGroup = 0A918AAE2F4B5E6800C422A9 /* Products */;
 					ProjectRef = B843BB799C8237174C77A4B1 /* QuickGigMVP.xcodeproj */;
 				},
 			);
@@ -198,6 +218,7 @@
 				D8E138E6F4274FB52DCBF900 /* LocationService.swift in Sources */,
 				14FE858DA575E84D14710578 /* LoginView.swift in Sources */,
 				3C7B8A41DA91CA6B9CAB57C1 /* MainMapView.swift in Sources */,
+				3EAA2640A860C12071D7552C /* MapboxJobsMapView.swift in Sources */,
 				C99D8860706C373538D484BD /* Models.swift in Sources */,
 				958B2552C665C78997FB643F /* NotificationService.swift in Sources */,
 				B63B10275B08661AC39C9FDA /* NotificationsView.swift in Sources */,
@@ -339,6 +360,8 @@
 				DEVELOPMENT_TEAM = 7P6MF54755;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "QuickGig MVP";
+				INFOPLIST_KEY_MBXAccessToken = $(MAPBOX_ACCESS_TOKEN);
+				INFOPLIST_KEY_MGLMapboxAccessToken = $(MAPBOX_ACCESS_TOKEN);
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Ми використовуємо геолокацію, щоб показувати підробіток у вашому регіоні України.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -347,7 +370,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.toxiceth.quickgigmvp-";
+				PRODUCT_BUNDLE_IDENTIFIER = com.quickgig.mvp;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -361,6 +384,8 @@
 				DEVELOPMENT_TEAM = 7P6MF54755;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "QuickGig MVP";
+				INFOPLIST_KEY_MBXAccessToken = $(MAPBOX_ACCESS_TOKEN);
+				INFOPLIST_KEY_MGLMapboxAccessToken = $(MAPBOX_ACCESS_TOKEN);
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Ми використовуємо геолокацію, щоб показувати підробіток у вашому регіоні України.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -369,7 +394,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.toxiceth.quickgigmvp-";
+				PRODUCT_BUNDLE_IDENTIFIER = com.quickgig.mvp;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -397,6 +422,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		0731FAE46940FAFD67D921A2 /* XCRemoteSwiftPackageReference "mapbox-maps-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/mapbox/mapbox-maps-ios.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 11.4.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1CEDFEE7A03D72A58D3BD33C /* MapboxMaps */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0731FAE46940FAFD67D921A2 /* XCRemoteSwiftPackageReference "mapbox-maps-ios" */;
+			productName = MapboxMaps;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = AE3C0A2FBD8EC010A824BF15 /* Project object */;
 }
