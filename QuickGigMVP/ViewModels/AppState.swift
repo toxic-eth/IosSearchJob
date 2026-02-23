@@ -35,6 +35,10 @@ final class AppState: ObservableObject {
     @Published var reviews: [Review] = []
     @Published var applications: [ShiftApplication] = []
     @Published var notifications: [InAppNotification] = []
+    @Published var conversations: [ShiftConversation] = []
+    @Published var chatMessages: [ChatMessage] = []
+    @Published var dealOffers: [DealOffer] = []
+    @Published var blockedConversationPairs: Set<String> = []
     @Published var authErrorMessage: String?
     @Published private(set) var shouldRequestLocationPermission = false
     @Published private(set) var phoneVerificationMaskedPhone = ""
@@ -72,6 +76,336 @@ final class AppState: ObservableObject {
 
     func unreadNotificationsCountForCurrentUser() -> Int {
         currentUserNotifications().filter { !$0.isRead }.count
+    }
+
+    func conversationsForCurrentUser() -> [ShiftConversation] {
+        guard let currentUser else { return [] }
+        return conversations
+            .filter { $0.employerId == currentUser.id || $0.workerId == currentUser.id }
+            .sorted { $0.lastMessageAt > $1.lastMessageAt }
+    }
+
+    func conversation(for shiftId: UUID, workerId: UUID) -> ShiftConversation? {
+        guard let shift = shift(by: shiftId) else { return nil }
+        return conversations.first(where: {
+            $0.shiftId == shiftId &&
+            $0.workerId == workerId &&
+            $0.employerId == shift.employerId
+        })
+    }
+
+    func ensureConversation(shiftId: UUID, workerId: UUID) -> ShiftConversation? {
+        guard let shift = shift(by: shiftId) else { return nil }
+        if let existing = conversation(for: shiftId, workerId: workerId) {
+            return existing
+        }
+        let now = Date()
+        let created = ShiftConversation(
+            id: UUID(),
+            shiftId: shiftId,
+            employerId: shift.employerId,
+            workerId: workerId,
+            createdAt: now,
+            lastMessageAt: now,
+            employerLastReadAt: now,
+            workerLastReadAt: now
+        )
+        conversations.append(created)
+        return created
+    }
+
+    func messages(for conversationId: UUID) -> [ChatMessage] {
+        chatMessages
+            .filter { $0.conversationId == conversationId }
+            .sorted { $0.createdAt < $1.createdAt }
+    }
+
+    func offers(for conversationId: UUID) -> [DealOffer] {
+        dealOffers
+            .filter { $0.conversationId == conversationId }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func unreadChatCountForCurrentUser() -> Int {
+        guard let currentUser else { return 0 }
+        return conversationsForCurrentUser().reduce(0) { partial, convo in
+            let lastRead = convo.employerId == currentUser.id ? convo.employerLastReadAt : convo.workerLastReadAt
+            let unread = chatMessages.contains(where: {
+                $0.conversationId == convo.id &&
+                $0.senderRole == .user &&
+                $0.senderId != currentUser.id &&
+                $0.createdAt > lastRead
+            })
+            return partial + (unread ? 1 : 0)
+        }
+    }
+
+    func unreadMessagesCount(in conversationId: UUID) -> Int {
+        guard let currentUser,
+              let convo = conversations.first(where: { $0.id == conversationId }) else { return 0 }
+        let lastRead = convo.employerId == currentUser.id ? convo.employerLastReadAt : convo.workerLastReadAt
+        return chatMessages.filter {
+            $0.conversationId == conversationId &&
+            $0.senderRole == .user &&
+            $0.senderId != currentUser.id &&
+            $0.createdAt > lastRead
+        }.count
+    }
+
+    func lastMessage(in conversationId: UUID) -> ChatMessage? {
+        chatMessages
+            .filter { $0.conversationId == conversationId }
+            .max(by: { $0.createdAt < $1.createdAt })
+    }
+
+    func markConversationRead(_ conversationId: UUID) {
+        guard let currentUser,
+              let index = conversations.firstIndex(where: { $0.id == conversationId }) else { return }
+        let now = Date()
+        if conversations[index].employerId == currentUser.id {
+            conversations[index].employerLastReadAt = now
+        } else if conversations[index].workerId == currentUser.id {
+            conversations[index].workerLastReadAt = now
+        }
+    }
+
+    func isConversationBlocked(_ conversationId: UUID) -> Bool {
+        guard let convo = conversations.first(where: { $0.id == conversationId }) else { return false }
+        return blockedConversationPairs.contains(blockKey(userA: convo.employerId, userB: convo.workerId))
+    }
+
+    func blockCurrentCounterparty(in conversationId: UUID) {
+        guard let currentUser,
+              let convoIndex = conversations.firstIndex(where: { $0.id == conversationId }) else { return }
+        let convo = conversations[convoIndex]
+        let key = blockKey(userA: convo.employerId, userB: convo.workerId)
+        blockedConversationPairs.insert(key)
+
+        let stamp = Date()
+        chatMessages.append(
+            ChatMessage(
+                id: UUID(),
+                conversationId: conversationId,
+                shiftId: convo.shiftId,
+                senderId: nil,
+                senderRole: .system,
+                text: "Діалог заблоковано. Надсилання повідомлень вимкнено.",
+                createdAt: stamp,
+                isEdited: false,
+                offerId: nil
+            )
+        )
+        conversations[convoIndex].lastMessageAt = stamp
+
+        let otherId = currentUser.id == convo.employerId ? convo.workerId : convo.employerId
+        addInAppNotification(
+            for: otherId,
+            title: "Діалог заблоковано",
+            message: "Один із учасників заблокував подальшу комунікацію.",
+            kind: .warning
+        )
+    }
+
+    func reportConversationIssue(_ conversationId: UUID, reason: String) {
+        guard let currentUser,
+              let convo = conversations.first(where: { $0.id == conversationId }) else { return }
+        let otherId = currentUser.id == convo.employerId ? convo.workerId : convo.employerId
+        addInAppNotification(
+            for: currentUser.id,
+            title: "Скаргу надіслано",
+            message: "Ми отримали вашу скаргу: \(reason).",
+            kind: .info
+        )
+        addInAppNotification(
+            for: otherId,
+            title: "Скарга на діалог",
+            message: "По діалогу створено звернення до підтримки.",
+            kind: .warning
+        )
+    }
+
+    @discardableResult
+    func sendMessage(conversationId: UUID, text: String) -> Bool {
+        guard let currentUser,
+              let convoIndex = conversations.firstIndex(where: { $0.id == conversationId }) else { return false }
+        let convo = conversations[convoIndex]
+        guard convo.employerId == currentUser.id || convo.workerId == currentUser.id else { return false }
+        guard !isConversationBlocked(conversationId) else {
+            authErrorMessage = "Діалог заблоковано"
+            return false
+        }
+
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return false }
+        guard normalized.count <= 1200 else {
+            authErrorMessage = "Повідомлення занадто довге"
+            return false
+        }
+
+        let now = Date()
+        chatMessages.append(
+            ChatMessage(
+                id: UUID(),
+                conversationId: conversationId,
+                shiftId: convo.shiftId,
+                senderId: currentUser.id,
+                senderRole: .user,
+                text: normalized,
+                createdAt: now,
+                isEdited: false,
+                offerId: nil
+            )
+        )
+        conversations[convoIndex].lastMessageAt = now
+        if convo.employerId == currentUser.id {
+            conversations[convoIndex].employerLastReadAt = now
+        } else {
+            conversations[convoIndex].workerLastReadAt = now
+        }
+
+        let recipientId = convo.employerId == currentUser.id ? convo.workerId : convo.employerId
+        addInAppNotification(
+            for: recipientId,
+            title: "Нове повідомлення",
+            message: "У вас нове повідомлення по співпраці.",
+            kind: .info
+        )
+        authErrorMessage = nil
+        return true
+    }
+
+    @discardableResult
+    func sendOffer(
+        conversationId: UUID,
+        payPerHour: Int,
+        startDate: Date,
+        endDate: Date,
+        address: String,
+        workersCount: Int
+    ) -> Bool {
+        guard let currentUser,
+              let convoIndex = conversations.firstIndex(where: { $0.id == conversationId }) else { return false }
+        let convo = conversations[convoIndex]
+        guard convo.employerId == currentUser.id || convo.workerId == currentUser.id else { return false }
+        guard !isConversationBlocked(conversationId) else {
+            authErrorMessage = "Діалог заблоковано"
+            return false
+        }
+
+        guard payPerHour >= 1 else {
+            authErrorMessage = "Сума офферу має бути більше 0"
+            return false
+        }
+        guard endDate > startDate else {
+            authErrorMessage = "Час завершення має бути пізніше старту"
+            return false
+        }
+
+        let targetId = convo.employerId == currentUser.id ? convo.workerId : convo.employerId
+        let normalizedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        let createdAt = Date()
+
+        let offer = DealOffer(
+            id: UUID(),
+            shiftId: convo.shiftId,
+            conversationId: conversationId,
+            fromUserId: currentUser.id,
+            toUserId: targetId,
+            proposedPayPerHour: payPerHour,
+            proposedStartDate: startDate,
+            proposedEndDate: endDate,
+            proposedAddress: normalizedAddress.isEmpty ? "Адреса уточнюється" : normalizedAddress,
+            proposedWorkersCount: max(1, workersCount),
+            status: .pending,
+            createdAt: createdAt,
+            respondedAt: nil
+        )
+        dealOffers.append(offer)
+
+        chatMessages.append(
+            ChatMessage(
+                id: UUID(),
+                conversationId: conversationId,
+                shiftId: convo.shiftId,
+                senderId: currentUser.id,
+                senderRole: .user,
+                text: "Надіслано оффер: \(payPerHour) грн/год, \(offer.proposedWorkersCount) працівн.",
+                createdAt: createdAt,
+                isEdited: false,
+                offerId: offer.id
+            )
+        )
+
+        conversations[convoIndex].lastMessageAt = createdAt
+        if convo.employerId == currentUser.id {
+            conversations[convoIndex].employerLastReadAt = createdAt
+        } else {
+            conversations[convoIndex].workerLastReadAt = createdAt
+        }
+
+        addInAppNotification(
+            for: targetId,
+            title: "Новий оффер",
+            message: "Ви отримали оффер по співпраці.",
+            kind: .warning
+        )
+        authErrorMessage = nil
+        return true
+    }
+
+    @discardableResult
+    func respondToOffer(offerId: UUID, accept: Bool) -> Bool {
+        guard let currentUser,
+              let offerIndex = dealOffers.firstIndex(where: { $0.id == offerId }),
+              dealOffers[offerIndex].status == .pending else { return false }
+
+        let offer = dealOffers[offerIndex]
+        guard offer.toUserId == currentUser.id else { return false }
+        guard let convoIndex = conversations.firstIndex(where: { $0.id == offer.conversationId }) else { return false }
+
+        dealOffers[offerIndex].status = accept ? .accepted : .rejected
+        dealOffers[offerIndex].respondedAt = Date()
+
+        let statusText = accept ? "Оффер прийнято" : "Оффер відхилено"
+        chatMessages.append(
+            ChatMessage(
+                id: UUID(),
+                conversationId: offer.conversationId,
+                shiftId: offer.shiftId,
+                senderId: currentUser.id,
+                senderRole: .user,
+                text: statusText,
+                createdAt: Date(),
+                isEdited: false,
+                offerId: offer.id
+            )
+        )
+
+        if accept {
+            applyAcceptedOffer(offer: dealOffers[offerIndex], responderId: currentUser.id)
+        }
+
+        conversations[convoIndex].lastMessageAt = Date()
+        if conversations[convoIndex].employerId == currentUser.id {
+            conversations[convoIndex].employerLastReadAt = Date()
+        } else {
+            conversations[convoIndex].workerLastReadAt = Date()
+        }
+
+        let recipientId = offer.fromUserId
+        addInAppNotification(
+            for: recipientId,
+            title: "Відповідь на оффер",
+            message: accept ? "Ваш оффер прийнято." : "Ваш оффер відхилено.",
+            kind: accept ? .success : .error
+        )
+        return true
+    }
+
+    private func blockKey(userA: UUID, userB: UUID) -> String {
+        let left = userA.uuidString
+        let right = userB.uuidString
+        return left < right ? "\(left)|\(right)" : "\(right)|\(left)"
     }
 
     func markNotificationAsRead(_ notificationId: UUID) {
@@ -420,6 +754,8 @@ final class AppState: ObservableObject {
         guard let shift = shift(by: shiftId), shift.status == .open, !isShiftFull(shift) else { return }
         guard !applications.contains(where: { $0.shiftId == shiftId && $0.workerId == currentUser.id }) else { return }
 
+        let convo = ensureConversation(shiftId: shiftId, workerId: currentUser.id)
+
         let createdAt = Date()
         applications.append(
             ShiftApplication(
@@ -432,6 +768,25 @@ final class AppState: ObservableObject {
                 respondBy: Calendar.current.date(byAdding: .hour, value: employerResponseSLAHours, to: createdAt) ?? createdAt
             )
         )
+        if let convo {
+            chatMessages.append(
+                ChatMessage(
+                    id: UUID(),
+                    conversationId: convo.id,
+                    shiftId: shiftId,
+                    senderId: nil,
+                    senderRole: .system,
+                    text: "Працівник відгукнувся на зміну. Можна обговорити умови в чаті.",
+                    createdAt: createdAt,
+                    isEdited: false,
+                    offerId: nil
+                )
+            )
+            if let index = conversations.firstIndex(where: { $0.id == convo.id }) {
+                conversations[index].lastMessageAt = createdAt
+                conversations[index].workerLastReadAt = createdAt
+            }
+        }
 
         addInAppNotification(
             for: currentUser.id,
@@ -451,6 +806,7 @@ final class AppState: ObservableObject {
     func updateApplicationStatus(applicationId: UUID, status: ApplicationStatus) {
         guard let index = applications.firstIndex(where: { $0.id == applicationId }) else { return }
         let oldStatus = applications[index].status
+        let workerId = applications[index].workerId
 
         let shiftId = applications[index].shiftId
         if status == .accepted,
@@ -469,6 +825,26 @@ final class AppState: ObservableObject {
         }
         if oldStatus != status {
             notifyStatusChangeIfNeeded(for: applications[index])
+            if let convo = ensureConversation(shiftId: shiftId, workerId: workerId) {
+                let statusText = "Статус заявки: \(status.title)."
+                let stamp = Date()
+                chatMessages.append(
+                    ChatMessage(
+                        id: UUID(),
+                        conversationId: convo.id,
+                        shiftId: shiftId,
+                        senderId: nil,
+                        senderRole: .system,
+                        text: statusText,
+                        createdAt: stamp,
+                        isEdited: false,
+                        offerId: nil
+                    )
+                )
+                if let convoIndex = conversations.firstIndex(where: { $0.id == convo.id }) {
+                    conversations[convoIndex].lastMessageAt = stamp
+                }
+            }
         }
         syncShiftCapacity(for: shiftId)
     }
@@ -542,6 +918,25 @@ final class AppState: ObservableObject {
             message: "\(workerName): \(new.title.lowercased()) по зміні «\(shift.title)».",
             kind: .info
         )
+
+        if let convo = ensureConversation(shiftId: application.shiftId, workerId: application.workerId),
+           let convoIndex = conversations.firstIndex(where: { $0.id == convo.id }) {
+            let stamp = Date()
+            chatMessages.append(
+                ChatMessage(
+                    id: UUID(),
+                    conversationId: convo.id,
+                    shiftId: application.shiftId,
+                    senderId: nil,
+                    senderRole: .system,
+                    text: "Етап виконання змінено: \(new.title).",
+                    createdAt: stamp,
+                    isEdited: false,
+                    offerId: nil
+                )
+            )
+            conversations[convoIndex].lastMessageAt = stamp
+        }
     }
 
     func application(for shiftId: UUID, workerId: UUID) -> ShiftApplication? {
@@ -738,6 +1133,64 @@ final class AppState: ObservableObject {
         reviews
             .filter { $0.toUserId == userId }
             .sorted { $0.date > $1.date }
+    }
+
+    private func applyAcceptedOffer(offer: DealOffer, responderId: UUID) {
+        guard let shiftIndex = shifts.firstIndex(where: { $0.id == offer.shiftId }) else { return }
+        guard let convo = conversations.first(where: { $0.id == offer.conversationId }) else { return }
+
+        shifts[shiftIndex].pay = offer.proposedPayPerHour
+        shifts[shiftIndex].startDate = offer.proposedStartDate
+        shifts[shiftIndex].endDate = offer.proposedEndDate
+        shifts[shiftIndex].address = offer.proposedAddress
+        shifts[shiftIndex].requiredWorkers = max(1, offer.proposedWorkersCount)
+
+        let workerId = convo.workerId
+        if let existingIndex = applications.firstIndex(where: { $0.shiftId == offer.shiftId && $0.workerId == workerId }) {
+            applications[existingIndex].status = .accepted
+            applications[existingIndex].progressStatus = .scheduled
+            reminderTimestamps[applications[existingIndex].id] = nil
+        } else {
+            let now = Date()
+            applications.append(
+                ShiftApplication(
+                    id: UUID(),
+                    shiftId: offer.shiftId,
+                    workerId: workerId,
+                    status: .accepted,
+                    progressStatus: .scheduled,
+                    createdAt: now,
+                    respondBy: now
+                )
+            )
+        }
+
+        // Cancel other pending offers for the same shift after agreement.
+        for index in dealOffers.indices where dealOffers[index].shiftId == offer.shiftId && dealOffers[index].status == .pending && dealOffers[index].id != offer.id {
+            dealOffers[index].status = .canceled
+            dealOffers[index].respondedAt = Date()
+        }
+
+        syncShiftCapacity(for: offer.shiftId)
+
+        if let convoIndex = conversations.firstIndex(where: { $0.id == offer.conversationId }) {
+            let actorName = user(by: responderId)?.name ?? "Учасник"
+            let stamp = Date()
+            chatMessages.append(
+                ChatMessage(
+                    id: UUID(),
+                    conversationId: offer.conversationId,
+                    shiftId: offer.shiftId,
+                    senderId: nil,
+                    senderRole: .system,
+                    text: "\(actorName) підтвердив(ла) оффер. Умови зафіксовано.",
+                    createdAt: stamp,
+                    isEdited: false,
+                    offerId: offer.id
+                )
+            )
+            conversations[convoIndex].lastMessageAt = stamp
+        }
     }
 
     private func syncShiftCapacity(for shiftId: UUID) {
@@ -991,6 +1444,10 @@ final class AppState: ObservableObject {
         recalculateRating(for: worker2.id)
 
         applications = buildDemoApplications(shifts: shifts, worker1: worker1, worker2: worker2, now: now)
+        let demoCommunication = buildDemoCommunication(shifts: shifts, applications: applications, now: now)
+        conversations = demoCommunication.conversations
+        chatMessages = demoCommunication.messages
+        dealOffers = demoCommunication.offers
 
         for shift in shifts {
             syncShiftCapacity(for: shift.id)
@@ -1096,6 +1553,10 @@ final class AppState: ObservableObject {
         recalculateRating(for: worker2.id)
 
         applications = buildDemoApplications(shifts: shifts, worker1: worker1, worker2: worker2, now: now)
+        let demoCommunication = buildDemoCommunication(shifts: shifts, applications: applications, now: now)
+        conversations = demoCommunication.conversations
+        chatMessages = demoCommunication.messages
+        dealOffers = demoCommunication.offers
 
         for shift in shifts {
             syncShiftCapacity(for: shift.id)
@@ -1240,6 +1701,127 @@ final class AppState: ObservableObject {
             return .inProgress
         }
         return .scheduled
+    }
+
+    private func buildDemoCommunication(
+        shifts: [JobShift],
+        applications: [ShiftApplication],
+        now: Date
+    ) -> (conversations: [ShiftConversation], messages: [ChatMessage], offers: [DealOffer]) {
+        var resultConversations: [ShiftConversation] = []
+        var resultMessages: [ChatMessage] = []
+        var resultOffers: [DealOffer] = []
+
+        let acceptedApps = applications
+            .filter { $0.status == .accepted }
+            .prefix(18)
+
+        for (index, application) in acceptedApps.enumerated() {
+            guard let shift = shifts.first(where: { $0.id == application.shiftId }) else { continue }
+            let created = Calendar.current.date(byAdding: .hour, value: -(index * 3 + 2), to: now) ?? now
+            let convoId = UUID()
+
+            let conversation = ShiftConversation(
+                id: convoId,
+                shiftId: shift.id,
+                employerId: shift.employerId,
+                workerId: application.workerId,
+                createdAt: created,
+                lastMessageAt: created,
+                employerLastReadAt: created,
+                workerLastReadAt: created
+            )
+            resultConversations.append(conversation)
+
+            let offerStatus: DealOfferStatus = index % 4 == 0 ? .accepted : (index % 7 == 0 ? .rejected : .pending)
+            let offer = DealOffer(
+                id: UUID(),
+                shiftId: shift.id,
+                conversationId: convoId,
+                fromUserId: shift.employerId,
+                toUserId: application.workerId,
+                proposedPayPerHour: shift.pay,
+                proposedStartDate: shift.startDate,
+                proposedEndDate: shift.endDate,
+                proposedAddress: shift.address,
+                proposedWorkersCount: shift.requiredWorkers,
+                status: offerStatus,
+                createdAt: created,
+                respondedAt: offerStatus == .pending ? nil : Calendar.current.date(byAdding: .minute, value: 30, to: created)
+            )
+            resultOffers.append(offer)
+
+            resultMessages.append(
+                ChatMessage(
+                    id: UUID(),
+                    conversationId: convoId,
+                    shiftId: shift.id,
+                    senderId: nil,
+                    senderRole: .system,
+                    text: "Діалог створено для узгодження умов співпраці.",
+                    createdAt: created,
+                    isEdited: false,
+                    offerId: nil
+                )
+            )
+            resultMessages.append(
+                ChatMessage(
+                    id: UUID(),
+                    conversationId: convoId,
+                    shiftId: shift.id,
+                    senderId: shift.employerId,
+                    senderRole: .user,
+                    text: "Вітаю! Перевірте, будь ласка, оффер нижче.",
+                    createdAt: Calendar.current.date(byAdding: .minute, value: 8, to: created) ?? created,
+                    isEdited: false,
+                    offerId: nil
+                )
+            )
+            resultMessages.append(
+                ChatMessage(
+                    id: UUID(),
+                    conversationId: convoId,
+                    shiftId: shift.id,
+                    senderId: shift.employerId,
+                    senderRole: .user,
+                    text: "Надіслано оффер: \(shift.pay) грн/год.",
+                    createdAt: Calendar.current.date(byAdding: .minute, value: 10, to: created) ?? created,
+                    isEdited: false,
+                    offerId: offer.id
+                )
+            )
+            if offerStatus != .pending {
+                resultMessages.append(
+                    ChatMessage(
+                        id: UUID(),
+                        conversationId: convoId,
+                        shiftId: shift.id,
+                        senderId: application.workerId,
+                        senderRole: .user,
+                        text: offerStatus == .accepted ? "Оффер прийнято." : "Оффер відхилено.",
+                        createdAt: Calendar.current.date(byAdding: .minute, value: 40, to: created) ?? created,
+                        isEdited: false,
+                        offerId: offer.id
+                    )
+                )
+            }
+        }
+
+        for index in resultConversations.indices {
+            let convo = resultConversations[index]
+            let convoMessages = resultMessages.filter { $0.conversationId == convo.id }
+            if let last = convoMessages.max(by: { $0.createdAt < $1.createdAt }) {
+                resultConversations[index].lastMessageAt = last.createdAt
+                resultConversations[index].employerLastReadAt = Calendar.current.date(byAdding: .minute, value: -5, to: last.createdAt) ?? last.createdAt
+                resultConversations[index].workerLastReadAt = Calendar.current.date(byAdding: .minute, value: -3, to: last.createdAt) ?? last.createdAt
+            }
+        }
+
+        return (
+            conversations: resultConversations,
+            messages: resultMessages.sorted { $0.createdAt < $1.createdAt },
+            offers: resultOffers.sorted { $0.createdAt > $1.createdAt }
+        )
     }
 
     private func cityNameForCoordinate(_ coordinate: CLLocationCoordinate2D) -> String {

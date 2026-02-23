@@ -167,3 +167,69 @@ struct InAppNotification: Identifiable {
     let createdAt: Date
     var isRead: Bool
 }
+
+enum MessageSenderRole: String, Codable {
+    case system
+    case user
+}
+
+enum DealOfferStatus: String, CaseIterable, Identifiable, Codable {
+    case pending
+    case accepted
+    case rejected
+    case canceled
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .pending:
+            return "Очікує рішення"
+        case .accepted:
+            return "Прийнято"
+        case .rejected:
+            return "Відхилено"
+        case .canceled:
+            return "Скасовано"
+        }
+    }
+}
+
+struct DealOffer: Identifiable {
+    let id: UUID
+    let shiftId: UUID
+    let conversationId: UUID
+    let fromUserId: UUID
+    let toUserId: UUID
+    let proposedPayPerHour: Int
+    let proposedStartDate: Date
+    let proposedEndDate: Date
+    let proposedAddress: String
+    let proposedWorkersCount: Int
+    var status: DealOfferStatus
+    let createdAt: Date
+    var respondedAt: Date?
+}
+
+struct ChatMessage: Identifiable {
+    let id: UUID
+    let conversationId: UUID
+    let shiftId: UUID
+    let senderId: UUID?
+    let senderRole: MessageSenderRole
+    let text: String
+    let createdAt: Date
+    var isEdited: Bool
+    var offerId: UUID?
+}
+
+struct ShiftConversation: Identifiable {
+    let id: UUID
+    let shiftId: UUID
+    let employerId: UUID
+    let workerId: UUID
+    let createdAt: Date
+    var lastMessageAt: Date
+    var employerLastReadAt: Date
+    var workerLastReadAt: Date
+}

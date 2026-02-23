@@ -133,6 +133,10 @@ struct MainMapView: View {
         appState.unreadNotificationsCountForCurrentUser()
     }
 
+    private var unreadChats: Int {
+        appState.unreadChatCountForCurrentUser()
+    }
+
     private var language: AppLanguage {
         resolvedLanguage(from: appLanguageRawValue)
     }
@@ -171,6 +175,12 @@ struct MainMapView: View {
                 .tabItem {
                     Label(I18n.t("tab.activity", language), systemImage: "list.bullet.clipboard")
                 }
+
+            CommunicationHubView()
+                .tabItem {
+                    Label("Чати", systemImage: "bubble.left.and.bubble.right")
+                }
+                .badge(unreadChats)
 
             NotificationsView()
                 .tabItem {

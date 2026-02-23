@@ -4,6 +4,7 @@ struct ActivityView: View {
     @EnvironmentObject private var appState: AppState
     @State private var selectedSection: ActivitySection = .active
     @State private var reviewTarget: ReviewTarget?
+    @State private var chatTarget: ChatTarget?
 
     var body: some View {
         NavigationStack {
@@ -34,6 +35,10 @@ struct ActivityView: View {
                         reviewTarget = nil
                     }
                 }
+            }
+            .sheet(item: $chatTarget) { target in
+                ConversationRoomSheet(target: target)
+                    .environmentObject(appState)
             }
         }
     }
@@ -143,6 +148,8 @@ struct ActivityView: View {
                             pendingReminderRow(for: item.application)
                         }
 
+                        quickChatRow(shift: item.shift, workerId: item.application.workerId, counterpartName: item.employer.name)
+
                         if selectedSection == .completed {
                             completedReviewRow(
                                 shift: item.shift,
@@ -219,6 +226,8 @@ struct ActivityView: View {
                                 .font(.caption)
                                 .foregroundStyle(.orange)
                         }
+
+                        quickChatRow(shift: item.shift, workerId: item.worker.id, counterpartName: item.worker.name)
 
                         if selectedSection == .completed {
                             completedReviewRow(
@@ -379,6 +388,30 @@ struct ActivityView: View {
         )
     }
 
+    @ViewBuilder
+    private func quickChatRow(shift: JobShift, workerId: UUID, counterpartName: String) -> some View {
+        let existingConversation = appState.conversation(for: shift.id, workerId: workerId)
+        HStack {
+            Button("Відкрити чат") {
+                guard let conversation = appState.ensureConversation(shiftId: shift.id, workerId: workerId) else { return }
+                chatTarget = ChatTarget(conversationId: conversation.id, shiftTitle: shift.title, counterpartName: counterpartName)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.purple)
+
+            let unread = existingConversation.map { appState.unreadMessagesCount(in: $0.id) } ?? 0
+            if unread > 0 {
+                Text("\(unread) нових")
+                    .font(.caption.bold())
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.orange.opacity(0.2))
+                    .foregroundStyle(.orange)
+                    .clipShape(Capsule())
+            }
+        }
+    }
+
     private func sectionCounts(for user: AppUser) -> [ActivitySection: Int] {
         user.role == .worker ? workerSectionCounts() : employerSectionCounts()
     }
@@ -533,6 +566,318 @@ private struct ReviewComposerSheet: View {
                 }
             }
         }
+    }
+}
+
+private struct ChatTarget: Identifiable {
+    let conversationId: UUID
+    let shiftTitle: String
+    let counterpartName: String
+
+    var id: UUID { conversationId }
+}
+
+struct CommunicationHubView: View {
+    @EnvironmentObject private var appState: AppState
+    @State private var selectedChat: ChatTarget?
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                AppBackgroundView()
+
+                ScrollView {
+                    VStack(spacing: 12) {
+                        ForEach(appState.conversationsForCurrentUser()) { conversation in
+                            conversationRow(conversation)
+                        }
+                        if appState.conversationsForCurrentUser().isEmpty {
+                            Text("Ще немає діалогів. Відкрийте чат зі сторінки активностей.")
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 40)
+                        }
+                    }
+                    .padding(16)
+                }
+            }
+            .navigationTitle("Чати")
+            .sheet(item: $selectedChat) { target in
+                ConversationRoomSheet(target: target)
+                    .environmentObject(appState)
+            }
+        }
+    }
+
+    private func conversationRow(_ conversation: ShiftConversation) -> some View {
+        let shift = appState.shift(by: conversation.shiftId)
+        let me = appState.currentUser
+        let counterpartId = conversation.employerId == me?.id ? conversation.workerId : conversation.employerId
+        let counterpart = appState.user(by: counterpartId)
+        let lastMessage = appState.lastMessage(in: conversation.id)
+        let unread = appState.unreadMessagesCount(in: conversation.id)
+        return Button {
+            selectedChat = ChatTarget(
+                conversationId: conversation.id,
+                shiftTitle: shift?.title ?? "Зміна",
+                counterpartName: counterpart?.name ?? "Користувач"
+            )
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(counterpart?.name ?? "Користувач")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Text(shift?.title ?? "Зміна")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if unread > 0 {
+                        Text("\(unread)")
+                            .font(.caption.bold())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.orange)
+                            .clipShape(Capsule())
+                    }
+                }
+
+                Text(lastMessage?.text ?? "Почніть діалог")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(Color.primary.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .glassCard()
+    }
+}
+
+private struct ConversationRoomSheet: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+
+    let target: ChatTarget
+    @State private var messageText = ""
+    @State private var showOfferComposer = false
+    @State private var offerPay = "200"
+    @State private var offerWorkers = "1"
+    @State private var offerStart = Date()
+    @State private var offerEnd = Calendar.current.date(byAdding: .hour, value: 6, to: Date()) ?? Date()
+    @State private var offerAddress = ""
+
+    private var messages: [ChatMessage] {
+        appState.messages(for: target.conversationId)
+    }
+
+    private var offersById: [UUID: DealOffer] {
+        Dictionary(uniqueKeysWithValues: appState.offers(for: target.conversationId).map { ($0.id, $0) })
+    }
+
+    private var canSendOffer: Bool {
+        guard let current = appState.currentUser,
+              let convo = appState.conversations.first(where: { $0.id == target.conversationId }) else { return false }
+        return current.id == convo.employerId || current.id == convo.workerId
+    }
+
+    private var isBlocked: Bool {
+        appState.isConversationBlocked(target.conversationId)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 10) {
+                            ForEach(messages) { message in
+                                messageRow(message)
+                                    .id(message.id)
+                            }
+                        }
+                        .padding(12)
+                    }
+                    .onAppear {
+                        appState.markConversationRead(target.conversationId)
+                        if let last = messages.last {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
+                    }
+                    .onChange(of: messages.count) { _, _ in
+                        appState.markConversationRead(target.conversationId)
+                        if let last = messages.last {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                proxy.scrollTo(last.id, anchor: .bottom)
+                            }
+                        }
+                    }
+                }
+
+                VStack(spacing: 8) {
+                    if canSendOffer && !isBlocked {
+                        Button("Надіслати оффер") {
+                            showOfferComposer = true
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.purple)
+                    }
+
+                    HStack(spacing: 8) {
+                        TextField("Повідомлення", text: $messageText)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(isBlocked)
+
+                        Button("Надіслати") {
+                            if appState.sendMessage(conversationId: target.conversationId, text: messageText) {
+                                messageText = ""
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.purple)
+                        .disabled(isBlocked)
+                    }
+                    if isBlocked {
+                        Text("Діалог заблоковано. Надсилання нових повідомлень недоступне.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(12)
+                .background(.ultraThinMaterial)
+            }
+            .navigationTitle(target.counterpartName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Text(target.shiftTitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("Поскаржитись") {
+                            appState.reportConversationIssue(target.conversationId, reason: "Некоректна поведінка в чаті")
+                        }
+                        Button("Заблокувати діалог", role: .destructive) {
+                            appState.blockCurrentCounterparty(in: target.conversationId)
+                        }
+                        Button("Закрити") { dismiss() }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
+            }
+            .sheet(isPresented: $showOfferComposer) {
+                NavigationStack {
+                    Form {
+                        Section("Умови офферу") {
+                            TextField("Оплата грн/год", text: $offerPay)
+                                .keyboardType(.numberPad)
+                            TextField("Кількість працівників", text: $offerWorkers)
+                                .keyboardType(.numberPad)
+                            DatePicker("Початок", selection: $offerStart)
+                            DatePicker("Завершення", selection: $offerEnd)
+                            TextField("Адреса", text: $offerAddress)
+                        }
+                    }
+                    .navigationTitle("Новий оффер")
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Скасувати") { showOfferComposer = false }
+                        }
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Надіслати") {
+                                let pay = Int(offerPay) ?? 0
+                                let workers = Int(offerWorkers) ?? 1
+                                if appState.sendOffer(
+                                    conversationId: target.conversationId,
+                                    payPerHour: pay,
+                                    startDate: offerStart,
+                                    endDate: offerEnd,
+                                    address: offerAddress,
+                                    workersCount: workers
+                                ) {
+                                    showOfferComposer = false
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func messageRow(_ message: ChatMessage) -> some View {
+        let myId = appState.currentUser?.id
+        let isMine = message.senderRole == .user && message.senderId == myId
+        HStack {
+            if isMine { Spacer(minLength: 32) }
+            VStack(alignment: .leading, spacing: 6) {
+                if message.senderRole == .system {
+                    Text("Система")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.secondary)
+                }
+                Text(message.text)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+
+                if let offerId = message.offerId, let offer = offersById[offerId] {
+                    offerCard(offer)
+                }
+
+                Text(message.createdAt, style: .time)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(10)
+            .background(isMine ? Color.purple.opacity(0.20) : Color.primary.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            if !isMine { Spacer(minLength: 32) }
+        }
+    }
+
+    @ViewBuilder
+    private func offerCard(_ offer: DealOffer) -> some View {
+        let currentUserId = appState.currentUser?.id
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Оффер • \(offer.status.title)")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+            Text("\(offer.proposedPayPerHour) грн/год • \(offer.proposedWorkersCount) працівн.")
+                .font(.subheadline.bold())
+            Text(offer.proposedAddress)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("\(offer.proposedStartDate.formatted(date: .abbreviated, time: .shortened)) - \(offer.proposedEndDate.formatted(date: .omitted, time: .shortened))")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            if offer.status == .pending && offer.toUserId == currentUserId {
+                HStack {
+                    Button("Прийняти") {
+                        _ = appState.respondToOffer(offerId: offer.id, accept: true)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+                    Button("Відхилити") {
+                        _ = appState.respondToOffer(offerId: offer.id, accept: false)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                }
+            }
+        }
+        .padding(8)
+        .background(Color.primary.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }
 
