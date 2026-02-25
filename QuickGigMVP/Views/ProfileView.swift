@@ -2,12 +2,19 @@ import SwiftUI
 
 struct ProfileView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var locationService: LocationService
     @AppStorage("preferredRole") private var preferredRoleRawValue = ""
     @AppStorage("appLanguage") private var appLanguageRawValue = AppLanguage.uk.rawValue
 
     @State private var showSettings = false
     @State private var resumeText = ""
     @State private var selectedGuaranteeShift: JobShift?
+    @State private var companyNameDraft = ""
+    @State private var taxIdDraft = ""
+    @State private var riskAppealDraft = ""
+    @State private var moderationNoteByCaseId: [UUID: String] = [:]
+    @State private var selectedAuditTypeRaw = "all"
+    @State private var selectedAuditWindowDays = 7
 
     private var language: AppLanguage { resolvedLanguage(from: appLanguageRawValue) }
 
@@ -20,6 +27,12 @@ struct ProfileView: View {
                     ScrollView {
                         VStack(spacing: 12) {
                             userCard(currentUser)
+                            trustCard(currentUser)
+                            employerKycCard(currentUser)
+                            riskAppealCard(currentUser)
+                            moderatorQueueCard(currentUser)
+                            auditTrailCard(currentUser)
+                            employerWalletCard(currentUser)
                             settingsShortcut
                             resumeCard(currentUser)
                             payoutGuaranteeCard(currentUser)
@@ -39,12 +52,21 @@ struct ProfileView: View {
             .sheet(item: $selectedGuaranteeShift) { shift in
                 ShiftDetailView(shift: shift)
                     .environmentObject(appState)
+                    .environmentObject(locationService)
             }
             .onAppear {
                 resumeText = appState.currentUser?.resumeSummary ?? ""
+                companyNameDraft = appState.currentUser?.employerCompanyName ?? ""
+                taxIdDraft = appState.currentUser?.employerTaxId ?? ""
             }
             .onChange(of: appState.currentUser?.resumeSummary) { _, newValue in
                 resumeText = newValue ?? ""
+            }
+            .onChange(of: appState.currentUser?.employerCompanyName) { _, newValue in
+                companyNameDraft = newValue ?? ""
+            }
+            .onChange(of: appState.currentUser?.employerTaxId) { _, newValue in
+                taxIdDraft = newValue ?? ""
             }
         }
     }
@@ -70,10 +92,58 @@ struct ProfileView: View {
                 Text("Рейтинг: \(currentUser.rating, specifier: "%.1f") (\(currentUser.reviewsCount) відгуків)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Text("Надійність: \(Int(currentUser.reliabilityScore))%")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.purple)
             }
             Spacer()
         }
         .glassCard()
+    }
+
+    private func trustCard(_ currentUser: AppUser) -> some View {
+        let risk = appState.riskScore(for: currentUser.id)
+        let riskLevel = appState.riskLevel(for: currentUser.id)
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                trustMetric(title: "Надійність", value: "\(Int(currentUser.reliabilityScore))%", tint: .purple)
+                trustMetric(title: "Completion", value: percentage(currentUser.completionRate), tint: .green)
+                trustMetric(title: "Cancel", value: percentage(currentUser.cancelRate), tint: .orange)
+                trustMetric(title: "No-show", value: percentage(currentUser.noShowRate), tint: .red)
+                trustMetric(title: "Risk", value: "\(Int(risk))% \(riskLevel.title)", tint: riskTint(riskLevel))
+            }
+        }
+        .glassCard()
+    }
+
+    private func trustMetric(title: String, value: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(value)
+                .font(.subheadline.bold())
+                .foregroundStyle(tint)
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(width: 118, alignment: .leading)
+        .padding(8)
+        .background(Color.primary.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func percentage(_ value: Double) -> String {
+        "\(Int((value * 100).rounded()))%"
+    }
+
+    private func riskTint(_ level: RiskLevel) -> Color {
+        switch level {
+        case .low:
+            return .green
+        case .medium:
+            return .orange
+        case .high:
+            return .red
+        }
     }
 
     private func recentReviews(_ currentUser: AppUser) -> some View {
@@ -108,6 +178,324 @@ struct ProfileView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassCard()
+    }
+
+    @ViewBuilder
+    private func employerKycCard(_ currentUser: AppUser) -> some View {
+        if currentUser.role == .employer {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Верифікація роботодавця")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Text(currentUser.employerKYCStatus.title)
+                        .font(.caption.bold())
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(kycStatusColor(currentUser.employerKYCStatus).opacity(0.2))
+                        .foregroundStyle(kycStatusColor(currentUser.employerKYCStatus))
+                        .clipShape(Capsule())
+                }
+
+                TextField("Назва компанії", text: $companyNameDraft)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Tax ID", text: $taxIdDraft)
+                    .textFieldStyle(.roundedBorder)
+
+                if !currentUser.kycReviewNote.isEmpty {
+                    Text(currentUser.kycReviewNote)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack(spacing: 8) {
+                    Button("Надіслати KYC") {
+                        _ = appState.submitEmployerKYC(companyName: companyNameDraft, taxId: taxIdDraft)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.purple)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassCard()
+        }
+    }
+
+    private func kycStatusColor(_ status: EmployerKYCStatus) -> Color {
+        switch status {
+        case .notSubmitted:
+            return .secondary
+        case .pending:
+            return .orange
+        case .verified:
+            return .green
+        case .rejected:
+            return .red
+        }
+    }
+
+    private func riskAppealCard(_ currentUser: AppUser) -> some View {
+        let risk = appState.riskScore(for: currentUser.id)
+        let cases = appState
+            .moderationCasesForCurrentUser()
+            .filter { $0.type == .riskAppeal }
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Підтримка та апеляції")
+                .font(.headline)
+                .foregroundStyle(.primary)
+
+            Text("Поточний risk score: \(Int(risk))%")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            TextField("Опишіть апеляцію по risk-обмеженню", text: $riskAppealDraft, axis: .vertical)
+                .lineLimit(2...4)
+                .textFieldStyle(.roundedBorder)
+
+            HStack(spacing: 8) {
+                Button("Подати апеляцію") {
+                    _ = appState.submitRiskAppeal(reason: riskAppealDraft)
+                    riskAppealDraft = ""
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.purple)
+            }
+
+            ForEach(cases.prefix(3)) { item in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(item.status.title): \(item.details)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if !item.resolutionNote.isEmpty {
+                        Text(item.resolutionNote)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCard()
+    }
+
+    @ViewBuilder
+    private func moderatorQueueCard(_ currentUser: AppUser) -> some View {
+        if appState.currentUserCanAccessModeration() {
+            let queue = appState.moderationQueueOpenCases()
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Модерація")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Text("\(queue.count)")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                }
+
+                if queue.isEmpty {
+                    Text("Відкритих кейсів немає")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(queue.prefix(6)) { item in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("\(item.type.title) • \(item.subject)")
+                                .font(.caption.bold())
+                            Text(item.details)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+
+                            TextField(
+                                "Коментар модератора",
+                                text: Binding(
+                                    get: { moderationNoteByCaseId[item.id] ?? "" },
+                                    set: { moderationNoteByCaseId[item.id] = $0 }
+                                )
+                            )
+                            .textFieldStyle(.roundedBorder)
+
+                            HStack(spacing: 8) {
+                                Button("Схвалити") {
+                                    let note = moderationNoteByCaseId[item.id] ?? "Кейс схвалено"
+                                    _ = appState.processModerationCase(caseId: item.id, approve: true, note: note)
+                                    moderationNoteByCaseId[item.id] = ""
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.green)
+
+                                Button("Відхилити") {
+                                    let note = moderationNoteByCaseId[item.id] ?? "Кейс відхилено"
+                                    _ = appState.processModerationCase(caseId: item.id, approve: false, note: note)
+                                    moderationNoteByCaseId[item.id] = ""
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.orange)
+                            }
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.primary.opacity(0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassCard()
+        }
+    }
+
+    private func auditTrailCard(_ currentUser: AppUser) -> some View {
+        let eventType = selectedAuditTypeRaw == "all" ? nil : AuditEventType(rawValue: selectedAuditTypeRaw)
+        let sinceDate: Date? = {
+            guard selectedAuditWindowDays > 0 else { return nil }
+            return Calendar.current.date(byAdding: .day, value: -selectedAuditWindowDays, to: Date())
+        }()
+        let events = appState.auditEventsForCurrentUser(type: eventType, since: sinceDate, limit: 24)
+        let windows: [(label: String, value: Int)] = [("24г", 1), ("7д", 7), ("30д", 30), ("Все", 0)]
+        let types: [(label: String, value: String)] = [("Все", "all")] + AuditEventType.allCases.map { ($0.title, $0.rawValue) }
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Журнал подій")
+                .font(.headline)
+                .foregroundStyle(.primary)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(types, id: \.value) { option in
+                        Button(option.label) {
+                            selectedAuditTypeRaw = option.value
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(selectedAuditTypeRaw == option.value ? .purple : .secondary)
+                    }
+                }
+            }
+
+            HStack(spacing: 6) {
+                ForEach(windows, id: \.value) { option in
+                    Button(option.label) {
+                        selectedAuditWindowDays = option.value
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(selectedAuditWindowDays == option.value ? .purple : .secondary)
+                }
+            }
+
+            if events.isEmpty {
+                Text("Подій за вибраними фільтрами немає")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(events.prefix(8)) { event in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(event.title)
+                            .font(.caption.bold())
+                        Text(event.message)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text(event.createdAt.formatted(date: .abbreviated, time: .shortened))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.primary.opacity(0.05))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCard()
+    }
+
+    @ViewBuilder
+    private func employerWalletCard(_ currentUser: AppUser) -> some View {
+        if currentUser.role == .employer,
+           let snapshot = appState.currentEmployerEscrowSnapshot() {
+            let transactions = appState.recentWalletTransactions(for: currentUser.id, limit: 5)
+            let reconciliation = appState.currentEmployerEscrowReconciliationReport()
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Ескроу баланс")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+
+                HStack(spacing: 8) {
+                    trustMetric(title: "Баланс", value: "\(snapshot.balance) грн", tint: .green)
+                    trustMetric(title: "В резерві", value: "\(snapshot.reserved) грн", tint: .orange)
+                    trustMetric(title: "Доступно", value: "\(snapshot.available) грн", tint: .purple)
+                }
+
+                HStack(spacing: 8) {
+                    ForEach([5_000, 10_000, 20_000], id: \.self) { value in
+                        Button("+\(value)") {
+                            _ = appState.topUpCurrentEmployerWallet(by: value)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+
+                if let reconciliation {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Reconciliation")
+                                .font(.caption.bold())
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text(reconciliation.isHealthy ? "OK" : "Mismatch")
+                                .font(.caption2.bold())
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background((reconciliation.isHealthy ? Color.green : Color.red).opacity(0.2))
+                                .foregroundStyle(reconciliation.isHealthy ? .green : .red)
+                                .clipShape(Capsule())
+                        }
+
+                        Text("Ledger: \(reconciliation.expectedAvailable) грн • Wallet: \(reconciliation.actualAvailable) грн")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text("Розбіжність: \(reconciliation.mismatchAmount) грн")
+                            .font(.caption2)
+                            .foregroundStyle(reconciliation.mismatchAmount == 0 ? Color.secondary : Color.red)
+
+                        Button("Запустити звірку") {
+                            _ = appState.runCurrentEmployerReconciliationAudit()
+                        }
+                        .buttonStyle(.bordered)
+                        .font(.caption)
+                    }
+                    .padding(8)
+                    .background(Color.primary.opacity(0.05))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+
+                if !transactions.isEmpty {
+                    Divider()
+                    Text("Останні фінансові події")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+
+                    ForEach(transactions) { tx in
+                        HStack {
+                            Text(tx.type.title)
+                                .font(.caption)
+                            Spacer()
+                            Text(walletAmountText(tx))
+                                .font(.caption.bold())
+                                .foregroundStyle(tx.amount >= 0 ? .green : .red)
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassCard()
+        }
+    }
+
+    private func walletAmountText(_ tx: WalletTransaction) -> String {
+        tx.amount >= 0 ? "+\(tx.amount) грн" : "\(tx.amount) грн"
     }
 
     private func payoutGuaranteeCard(_ currentUser: AppUser) -> some View {

@@ -122,7 +122,16 @@ struct MainMapView: View {
                     Double(shift.durationHours) <= maxDuration &&
                     isWithinSelectedCity(shift.coordinate)
             }
-            .sorted { $0.startDate < $1.startDate }
+            .sorted { lhs, rhs in
+                if isWorkerRole {
+                    let lhsScore = shiftDiscoveryScore(lhs)
+                    let rhsScore = shiftDiscoveryScore(rhs)
+                    if abs(lhsScore - rhsScore) > 0.001 {
+                        return lhsScore > rhsScore
+                    }
+                }
+                return lhs.startDate < rhs.startDate
+            }
     }
 
     private var upcomingCount: Int {
@@ -182,6 +191,14 @@ struct MainMapView: View {
                 }
                 .badge(unreadChats)
 
+            if appState.currentUserCanAccessModeration() {
+                ModerationView()
+                    .tabItem {
+                        Label("Модерація", systemImage: "shield.lefthalf.filled")
+                    }
+                    .badge(appState.moderationQueueOpenCases().count)
+            }
+
             NotificationsView()
                 .tabItem {
                     Label(I18n.t("tab.notifications", language), systemImage: "bell")
@@ -215,6 +232,7 @@ struct MainMapView: View {
             .sheet(item: $selectedShift) { shift in
                 ShiftDetailView(shift: shift)
                     .environmentObject(appState)
+                    .environmentObject(locationService)
             }
                 .sheet(isPresented: $showCreateShift) {
                     AddShiftView(centerCoordinate: selectedCity.coordinate)
@@ -278,6 +296,8 @@ struct MainMapView: View {
             ScrollView {
                 VStack(spacing: 12) {
                     employerSummaryCard
+                    employerAnalyticsCard
+                    employerPayoutQueueCard
 
                     Button {
                         showCreateShift = true
@@ -338,6 +358,117 @@ struct MainMapView: View {
         .glassCard()
     }
 
+    private var employerAnalyticsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Аналітика вакансій")
+                .font(.headline)
+                .foregroundStyle(primaryOnBackground)
+
+            HStack(spacing: 8) {
+                employerMetricTile(
+                    title: "Відгуки",
+                    value: "\(employerPendingApplications + employerAcceptedApplications + employerRejectedApplications)",
+                    subtitle: "кандидатів у воронці",
+                    tint: .purple
+                )
+                employerMetricTile(
+                    title: "Fill Rate",
+                    value: percentText(employerFillRate),
+                    subtitle: "\(employerAcceptedApplications)/\(max(1, employerTotalSlots)) слотів",
+                    tint: .green
+                )
+            }
+
+            HStack(spacing: 8) {
+                employerMetricTile(
+                    title: "No-show",
+                    value: "\(employerNoShowCount)",
+                    subtitle: "завершені зміни без виходу",
+                    tint: .orange
+                )
+                employerMetricTile(
+                    title: "Виплачено",
+                    value: "\(employerPaidCount)",
+                    subtitle: "завершень зі статусом paid",
+                    tint: .blue
+                )
+            }
+
+            HStack(spacing: 12) {
+                Label("Pending: \(employerPendingApplications)", systemImage: "clock")
+                Label("Accepted: \(employerAcceptedApplications)", systemImage: "checkmark.circle")
+                Label("Rejected: \(employerRejectedApplications)", systemImage: "xmark.circle")
+            }
+            .font(.caption)
+            .foregroundStyle(secondaryOnBackground)
+        }
+        .glassCard()
+    }
+
+    private func employerMetricTile(title: String, value: String, subtitle: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(secondaryOnBackground)
+            Text(value)
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundStyle(primaryOnBackground)
+            Text(subtitle)
+                .font(.caption2)
+                .foregroundStyle(secondaryOnBackground)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(tint.opacity(isDarkTheme ? 0.18 : 0.1), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var employerShiftIds: Set<UUID> {
+        Set(employerShifts.map(\.id))
+    }
+
+    private var employerApplications: [ShiftApplication] {
+        appState.applications.filter { employerShiftIds.contains($0.shiftId) }
+    }
+
+    private var employerPendingApplications: Int {
+        employerApplications.filter { $0.status == .pending }.count
+    }
+
+    private var employerAcceptedApplications: Int {
+        employerApplications.filter { $0.status == .accepted }.count
+    }
+
+    private var employerRejectedApplications: Int {
+        employerApplications.filter { $0.status == .rejected }.count
+    }
+
+    private var employerTotalSlots: Int {
+        max(1, employerShifts.reduce(0) { $0 + max(0, $1.requiredWorkers) })
+    }
+
+    private var employerFillRate: Double {
+        let accepted = Double(employerAcceptedApplications)
+        let slots = Double(employerTotalSlots)
+        return min(1, max(0, accepted / slots))
+    }
+
+    private var employerNoShowCount: Int {
+        employerApplications.filter { application in
+            guard application.status == .accepted,
+                  application.progressStatus == .scheduled,
+                  let shift = appState.shift(by: application.shiftId) else { return false }
+            return shift.endDate < Date()
+        }.count
+    }
+
+    private var employerPaidCount: Int {
+        employerApplications.filter { $0.status == .accepted && $0.progressStatus == .paid }.count
+    }
+
+    private func percentText(_ value: Double) -> String {
+        "\(Int((value * 100).rounded()))%"
+    }
+
     private func employerShiftRow(_ shift: JobShift) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -363,6 +494,48 @@ struct MainMapView: View {
             .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCard()
+    }
+
+    private var employerPayoutQueueCard: some View {
+        let pending = appState.pendingPayoutsForCurrentEmployer()
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Черга виплат")
+                    .font(.headline)
+                    .foregroundStyle(primaryOnBackground)
+                Spacer()
+                Text("\(pending.count)")
+                    .font(.title3.bold())
+                    .foregroundStyle(.purple)
+            }
+
+            if pending.isEmpty {
+                Text("Немає виплат у статусі pending release")
+                    .font(.caption)
+                    .foregroundStyle(secondaryOnBackground)
+            } else {
+                ForEach(pending.prefix(3)) { payout in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Заявка \(payout.applicationId.uuidString.prefix(6)) • \(payout.workerNetAmount) грн")
+                            .font(.caption.bold())
+                            .foregroundStyle(primaryOnBackground)
+                        Text(payout.note)
+                            .font(.caption2)
+                            .foregroundStyle(secondaryOnBackground)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                    .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+                }
+
+                Button("Провести всі виплати") {
+                    _ = appState.releasePendingPayoutsForCurrentEmployer()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
+            }
+        }
         .glassCard()
     }
 
@@ -962,6 +1135,35 @@ struct MainMapView: View {
         return first.distance(from: second) / 1000
     }
 
+    private func shiftDiscoveryScore(_ shift: JobShift) -> Double {
+        let employer = appState.user(by: shift.employerId)
+        let reliability = (employer?.reliabilityScore ?? 0) / 100.0
+        let rating = min(1.0, max(0.0, (employer?.rating ?? 0) / 5.0))
+        let riskPenalty = appState.riskScore(for: shift.employerId) / 100.0
+        let payScore = min(1.0, Double(shift.pay) / 320.0)
+        let verificationScore = (employer?.isVerifiedEmployer == true) ? 0.08 : 0
+
+        let distanceScore: Double
+        if shift.workFormat == .online {
+            distanceScore = 0.7
+        } else if let distance = effectiveDistanceKm(for: shift) {
+            distanceScore = max(0, 1 - (distance / 35.0))
+        } else {
+            distanceScore = 0.45
+        }
+
+        let hoursUntilStart = max(0, shift.startDate.timeIntervalSinceNow / 3600)
+        let urgencyScore = 1 / (1 + (hoursUntilStart / 48))
+
+        return (reliability * 0.38) +
+            (rating * 0.22) +
+            (distanceScore * 0.20) +
+            (payScore * 0.14) +
+            (urgencyScore * 0.06) +
+            verificationScore -
+            (riskPenalty * 0.25)
+    }
+
     private func refreshRouteDistances() {
         guard let user = locationService.currentLocation else {
             routeDistanceTask?.cancel()
@@ -1117,6 +1319,9 @@ private struct ShiftMapBottomSheet: View {
                             Text(employer.name)
                                 .font(.subheadline.weight(.semibold))
                             Text("Рейтинг: \(employer.rating, specifier: "%.1f") • \(employer.reviewsCount)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("Надійність: \(Int(employer.reliabilityScore))%")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -1277,6 +1482,8 @@ private struct ShiftRow: View {
                             Label("Перевірено", systemImage: "checkmark.seal.fill")
                                 .foregroundStyle(.purple)
                         }
+                        Text("• \(Int(employer.reliabilityScore))%")
+                            .foregroundStyle(.secondary)
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)

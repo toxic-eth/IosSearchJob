@@ -5,6 +5,9 @@ struct ActivityView: View {
     @State private var selectedSection: ActivitySection = .active
     @State private var reviewTarget: ReviewTarget?
     @State private var chatTarget: ChatTarget?
+    @State private var disputeResolutionDraftById: [UUID: String] = [:]
+    @State private var expandedDisputeIds: Set<UUID> = []
+    @State private var now = Date()
 
     var body: some View {
         NavigationStack {
@@ -17,6 +20,7 @@ struct ActivityView: View {
                         VStack(spacing: 12) {
                             summaryCard(for: user)
                             sectionPicker(counts: counts)
+                            disputeHub(for: user)
                             activityContent(for: user)
                         }
                         .padding(.horizontal, 16)
@@ -39,6 +43,9 @@ struct ActivityView: View {
             .sheet(item: $chatTarget) { target in
                 ConversationRoomSheet(target: target)
                     .environmentObject(appState)
+            }
+            .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { tick in
+                now = tick
             }
         }
     }
@@ -87,6 +94,124 @@ struct ActivityView: View {
     }
 
     @ViewBuilder
+    private func disputeHub(for user: AppUser) -> some View {
+        let disputes = appState.disputesForCurrentUser()
+        if !disputes.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Спори та підтримка")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+
+                ForEach(disputes.prefix(4)) { dispute in
+                    let shift = appState.shift(by: dispute.shiftId)
+                    let application = appState.applications.first(where: { $0.id == dispute.applicationId })
+                    let workerId = application?.workerId
+                    let workerName = workerId.flatMap { appState.user(by: $0)?.name } ?? "Працівник"
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(shift?.title ?? "Зміна")
+                                .font(.subheadline.bold())
+                            Spacer()
+                            DisputeStatusBadge(status: dispute.status)
+                        }
+
+                        if user.role == .employer {
+                            Text("Працівник: \(workerName)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(dispute.reason)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("Категорія: \(dispute.category.title)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text(appState.disputeSLAStatusText(dispute))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        if let seconds = appState.disputeSecondsRemaining(dispute, now: now) {
+                            ProgressView(value: Double(seconds), total: 30 * 60)
+                                .tint(.orange)
+                        }
+
+                        if user.role == .employer {
+                            if dispute.status == .open {
+                                Button("Взяти в розгляд") {
+                                    _ = appState.startDisputeReview(disputeId: dispute.id)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.purple)
+                            }
+                            if dispute.status == .open || dispute.status == .inReview {
+                                TextField(
+                                    "Нотатка рішення",
+                                    text: Binding(
+                                        get: { disputeResolutionDraftById[dispute.id] ?? "" },
+                                        set: { disputeResolutionDraftById[dispute.id] = $0 }
+                                    )
+                                )
+                                .textFieldStyle(.roundedBorder)
+
+                                HStack {
+                                    Button("Рішення: працівник") {
+                                        let note = disputeResolutionDraftById[dispute.id] ?? ""
+                                        _ = appState.resolveDispute(disputeId: dispute.id, inFavorOfWorker: true, note: note)
+                                        disputeResolutionDraftById[dispute.id] = ""
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(.green)
+
+                                    Button("Рішення: роботодавець") {
+                                        let note = disputeResolutionDraftById[dispute.id] ?? ""
+                                        _ = appState.resolveDispute(disputeId: dispute.id, inFavorOfWorker: false, note: note)
+                                        disputeResolutionDraftById[dispute.id] = ""
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                            }
+                        }
+
+                        Button(expandedDisputeIds.contains(dispute.id) ? "Сховати історію" : "Історія кейсу") {
+                            if expandedDisputeIds.contains(dispute.id) {
+                                expandedDisputeIds.remove(dispute.id)
+                            } else {
+                                expandedDisputeIds.insert(dispute.id)
+                            }
+                        }
+                        .buttonStyle(.bordered)
+
+                        if expandedDisputeIds.contains(dispute.id) {
+                            let updates = appState.disputeUpdates(for: dispute.id)
+                            if updates.isEmpty {
+                                Text("Історія ще порожня")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                ForEach(updates.prefix(6)) { update in
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("\(update.actorTitle): \(update.message)")
+                                            .font(.caption2)
+                                        Text(update.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(Color.primary.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassCard()
+        }
+    }
+
+    @ViewBuilder
     private func activityContent(for user: AppUser) -> some View {
         if user.role == .worker {
             workerActivityContent
@@ -130,6 +255,9 @@ struct ActivityView: View {
                         Text("Роботодавець: \(item.employer.name)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        Text("Надійність роботодавця: \(Int(item.employer.reliabilityScore))%")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
 
                         if item.application.status == .accepted {
                             HStack {
@@ -138,6 +266,15 @@ struct ActivityView: View {
                                     .foregroundStyle(.secondary)
                                 Spacer()
                                 ActivityProgressBadge(status: item.application.progressStatus)
+                            }
+                            if let payout = appState.payoutRecord(for: item.application.id) {
+                                HStack {
+                                    Text("Payout")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    PayoutStatusBadge(status: payout.status)
+                                }
                             }
                             Text(appState.guaranteeStateText(for: item.application))
                                 .font(.caption2)
@@ -202,6 +339,9 @@ struct ActivityView: View {
                         Text("Кандидат: \(item.worker.name)")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+                        Text("Надійність кандидата: \(Int(item.worker.reliabilityScore))%")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
 
                         Text("\(item.shift.pay) грн/год • \(item.shift.durationHours) год • \(item.shift.workFormat.title)")
                             .font(.subheadline)
@@ -218,6 +358,15 @@ struct ActivityView: View {
                                     .foregroundStyle(.secondary)
                                 Spacer()
                                 ActivityProgressBadge(status: item.application.progressStatus)
+                            }
+                            if let payout = appState.payoutRecord(for: item.application.id) {
+                                HStack {
+                                    Text("Payout")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    PayoutStatusBadge(status: payout.status)
+                                }
                             }
                         }
 
@@ -953,6 +1102,86 @@ private struct ActivityProgressBadge: View {
             return .purple
         case .paid:
             return .green
+        }
+    }
+}
+
+private struct DisputeStatusBadge: View {
+    let status: ShiftDisputeStatus
+
+    var body: some View {
+        Text(status.title)
+            .font(.caption.bold())
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(backgroundColor)
+            .foregroundStyle(textColor)
+            .clipShape(Capsule())
+    }
+
+    private var backgroundColor: Color {
+        switch status {
+        case .open:
+            return .orange.opacity(0.2)
+        case .inReview:
+            return .blue.opacity(0.2)
+        case .resolvedForWorker, .resolvedForEmployer:
+            return .green.opacity(0.2)
+        }
+    }
+
+    private var textColor: Color {
+        switch status {
+        case .open:
+            return .orange
+        case .inReview:
+            return .blue
+        case .resolvedForWorker, .resolvedForEmployer:
+            return .green
+        }
+    }
+}
+
+private struct PayoutStatusBadge: View {
+    let status: PayoutStatus
+
+    var body: some View {
+        Text(status.title)
+            .font(.caption.bold())
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(backgroundColor)
+            .foregroundStyle(textColor)
+            .clipShape(Capsule())
+    }
+
+    private var backgroundColor: Color {
+        switch status {
+        case .reserved:
+            return .blue.opacity(0.2)
+        case .onHold:
+            return .orange.opacity(0.2)
+        case .pendingRelease:
+            return .purple.opacity(0.2)
+        case .paid:
+            return .green.opacity(0.2)
+        case .canceled:
+            return .red.opacity(0.2)
+        }
+    }
+
+    private var textColor: Color {
+        switch status {
+        case .reserved:
+            return .blue
+        case .onHold:
+            return .orange
+        case .pendingRelease:
+            return .purple
+        case .paid:
+            return .green
+        case .canceled:
+            return .red
         }
     }
 }

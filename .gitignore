@@ -10,3 +10,7 @@ xcuserdata/
 # Swift Package Manager
 .build/
 .swiftpm/
+
+# Local analysis reports
+COMPETITOR_REPORT_2026-02-24.md
+QuickGigMVP/PRODUCT_COMPETITOR_REPORT_2026-02-24.md

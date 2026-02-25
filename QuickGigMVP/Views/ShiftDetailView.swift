@@ -2,15 +2,23 @@ import SwiftUI
 
 struct ShiftDetailView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var locationService: LocationService
     @Environment(\.dismiss) private var dismiss
 
     let shift: JobShift
 
     @State private var stars = 5
     @State private var reviewText = ""
+    @State private var disputeReason = ""
+    @State private var disputeResolutionNote = ""
+    @State private var disputeCategory: DisputeCategory = .payment
 
     private var liveShift: JobShift {
         appState.shift(by: shift.id) ?? shift
+    }
+
+    private var currentUser: AppUser? {
+        appState.currentUser
     }
 
     var body: some View {
@@ -54,10 +62,15 @@ struct ShiftDetailView: View {
                         }
                         Text("Рейтинг: \(employer.rating, specifier: "%.1f") (\(employer.reviewsCount) відгуків)")
                             .foregroundStyle(.secondary)
+                        Text("Надійність: \(Int(employer.reliabilityScore))%")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
 
                     workerActions(for: employer)
                     employerActionsIfOwner
+                    paymentTransparencySection
+                    disputeAndTimelineSection
                     reviewSection(for: employer)
                 }
             }
@@ -183,6 +196,207 @@ struct ShiftDetailView: View {
                             }
                             .padding(.vertical, 4)
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var paymentTransparencySection: some View {
+        if let currentUser {
+            let acceptedWorkers = max(1, appState.acceptedApplicationsCount(for: liveShift.id))
+            let breakdown = appState.paymentBreakdown(for: liveShift, workersCount: acceptedWorkers)
+
+            Section("Прозора оплата") {
+                if currentUser.role == .worker {
+                    let oneWorker = appState.paymentBreakdown(for: liveShift, workersCount: 1)
+                    LabeledContent("Нараховано за зміну") {
+                        Text("\(oneWorker.grossAmount) грн")
+                    }
+                    LabeledContent("Сервісний збір") {
+                        Text("-\(oneWorker.workerServiceFee) грн")
+                            .foregroundStyle(.secondary)
+                    }
+                    LabeledContent("До виплати") {
+                        Text("\(oneWorker.workerNetAmount) грн")
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.green)
+                    }
+                    if let application = appState.application(for: liveShift.id, workerId: currentUser.id),
+                       let payout = appState.payoutRecord(for: application.id) {
+                        LabeledContent("Payout статус") {
+                            Text(payout.status.title)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } else {
+                    let oneWorker = appState.paymentBreakdown(for: liveShift, workersCount: 1)
+                    LabeledContent("База до оплати") {
+                        Text("\(breakdown.grossAmount) грн")
+                    }
+                    LabeledContent("Сервісний збір") {
+                        Text("+\(breakdown.employerServiceFee) грн")
+                            .foregroundStyle(.secondary)
+                    }
+                    LabeledContent("Разом до списання") {
+                        Text("\(breakdown.employerTotalAmount) грн")
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.purple)
+                    }
+                    LabeledContent("Потрібно на 1 працівника") {
+                        Text("\(oneWorker.employerTotalAmount) грн")
+                            .foregroundStyle(.secondary)
+                    }
+                    if let wallet = appState.currentEmployerEscrowSnapshot() {
+                        LabeledContent("Ескроу доступно") {
+                            Text("\(wallet.available) грн")
+                                .foregroundStyle(wallet.available >= oneWorker.employerTotalAmount ? .green : .red)
+                        }
+                        LabeledContent("В резерві") {
+                            Text("\(wallet.reserved) грн")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    if let firstAccepted = appState
+                        .applications(for: liveShift.id)
+                        .first(where: { $0.status == .accepted }),
+                       let payout = appState.payoutRecord(for: firstAccepted.id) {
+                        LabeledContent("Payout статус") {
+                            Text(payout.status.title)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var disputeAndTimelineSection: some View {
+        if let currentUser,
+           currentUser.role == .worker,
+           let application = appState.application(for: liveShift.id, workerId: currentUser.id),
+           application.status == .accepted {
+            Section("Виконання зміни") {
+                if application.progressStatus == .scheduled {
+                    Button("Check-in") {
+                        _ = appState.checkIn(applicationId: application.id, coordinate: locationService.currentLocation)
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else if application.progressStatus == .inProgress {
+                    Button("Check-out") {
+                        _ = appState.checkOut(applicationId: application.id, coordinate: locationService.currentLocation)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                    if let dispute = appState.activeDispute(for: application.id) {
+                        Label("Активний спір: \(dispute.status.title)", systemImage: "exclamationmark.bubble.fill")
+                            .foregroundStyle(.orange)
+                        Text("Категорія: \(dispute.category.title)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text(dispute.reason)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(appState.disputeSLAStatusText(dispute))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        let updates = appState.disputeUpdates(for: dispute.id)
+                        if !updates.isEmpty {
+                            ForEach(updates.prefix(3)) { update in
+                                Text("• \(update.actorTitle): \(update.message)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    } else {
+                        Picker("Категорія", selection: $disputeCategory) {
+                            ForEach(DisputeCategory.allCases) { category in
+                                Text(category.title).tag(category)
+                            }
+                        }
+                        TextField("Опишіть проблему (якщо є)", text: $disputeReason, axis: .vertical)
+                            .lineLimit(2...4)
+                        Button("Відкрити спір") {
+                            _ = appState.openDispute(applicationId: application.id, category: disputeCategory, reason: disputeReason)
+                            disputeReason = ""
+                        }
+                    .buttonStyle(.bordered)
+                    .disabled(disputeReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+
+            let events = appState.executionEvents(for: application.id)
+            if !events.isEmpty {
+                Section("Таймлайн зміни") {
+                    ForEach(events.prefix(8)) { event in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(event.type.title)
+                                .font(.subheadline.weight(.semibold))
+                            Text(event.note)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(event.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+            }
+        }
+
+        if let currentUser, currentUser.role == .employer {
+            let disputes = appState
+                .applications(for: liveShift.id)
+                .compactMap { app in appState.activeDispute(for: app.id).map { (app, $0) } }
+
+            if !disputes.isEmpty {
+                Section("Спори по зміні") {
+                    ForEach(disputes, id: \.1.id) { item in
+                        let application = item.0
+                        let dispute = item.1
+                        let workerName = appState.user(by: application.workerId)?.name ?? "Працівник"
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(workerName)
+                                .font(.subheadline.weight(.semibold))
+                            Text(dispute.reason)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if dispute.status == .open {
+                                Button("Взяти спір у розгляд") {
+                                    _ = appState.startDisputeReview(disputeId: dispute.id)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.purple)
+                            }
+                            TextField("Нотатка рішення (необов'язково)", text: $disputeResolutionNote)
+                            HStack {
+                                Button("На користь працівника") {
+                                    _ = appState.resolveDispute(
+                                        disputeId: dispute.id,
+                                        inFavorOfWorker: true,
+                                        note: disputeResolutionNote
+                                    )
+                                    disputeResolutionNote = ""
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.green)
+
+                                Button("На користь роботодавця") {
+                                    _ = appState.resolveDispute(
+                                        disputeId: dispute.id,
+                                        inFavorOfWorker: false,
+                                        note: disputeResolutionNote
+                                    )
+                                    disputeResolutionNote = ""
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                        }
+                        .padding(.vertical, 4)
                     }
                 }
             }
