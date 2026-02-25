@@ -154,12 +154,16 @@ struct MainMapView: View {
         resolvedTheme(from: appThemeRawValue) == .dark
     }
 
+    private var palette: AppPalette {
+        AppPalette.forTheme(resolvedTheme(from: appThemeRawValue))
+    }
+
     private var primaryOnBackground: Color {
-        isDarkTheme ? .white : .black
+        palette.textPrimary
     }
 
     private var secondaryOnBackground: Color {
-        isDarkTheme ? .white.opacity(0.82) : .black.opacity(0.72)
+        palette.textSecondary
     }
 
     private var activeFiltersCount: Int {
@@ -174,20 +178,29 @@ struct MainMapView: View {
     }
 
     var body: some View {
+        let currentRole = appState.currentUser?.role
         TabView {
             dashboard
                 .tabItem {
-                    Label(I18n.t("tab.shifts", language), systemImage: "map")
+                    if currentRole == .employer {
+                        Label("Публікації", systemImage: "briefcase")
+                    } else {
+                        Label(I18n.t("tab.shifts", language), systemImage: "map")
+                    }
                 }
 
             ActivityView()
                 .tabItem {
-                    Label(I18n.t("tab.activity", language), systemImage: "list.bullet.clipboard")
+                    if currentRole == .employer {
+                        Label("Операції", systemImage: "chart.line.text.clipboard")
+                    } else {
+                        Label(I18n.t("tab.activity", language), systemImage: "list.bullet.clipboard")
+                    }
                 }
 
             CommunicationHubView()
                 .tabItem {
-                    Label("Чати", systemImage: "bubble.left.and.bubble.right")
+                    Label("Комунікація", systemImage: "bubble.left.and.bubble.right")
                 }
                 .badge(unreadChats)
 
@@ -201,7 +214,11 @@ struct MainMapView: View {
 
             NotificationsView()
                 .tabItem {
-                    Label(I18n.t("tab.notifications", language), systemImage: "bell")
+                    if currentRole == .employer {
+                        Label("Сигнали", systemImage: "bell")
+                    } else {
+                        Label(I18n.t("tab.notifications", language), systemImage: "bell")
+                    }
                 }
                 .badge(unreadNotifications)
 
@@ -210,7 +227,7 @@ struct MainMapView: View {
                     Label(I18n.t("tab.profile", language), systemImage: "person.crop.circle")
                 }
         }
-        .tint(.purple)
+        .tint(palette.accent)
     }
 
     private var dashboard: some View {
@@ -571,15 +588,21 @@ struct MainMapView: View {
                         ScrollView(.horizontal) {
                             LazyHStack(spacing: 12) {
                                 ForEach(filteredShifts.prefix(16)) { shift in
-                                    ShiftRow(
+                                ShiftCardView(
                                     shift: shift,
                                     employer: appState.user(by: shift.employerId),
                                     accepted: appState.acceptedApplicationsCount(for: shift.id),
-                                    distanceKm: distanceForDisplay(shift)
+                                    distanceKm: distanceForDisplay(shift),
+                                    layout: .compact
                                 ) {
                                     focusOnShift(shift)
                                 }
                                     .frame(width: cardWidth, height: 164, alignment: .top)
+                                    .scrollTransition(axis: .horizontal) { content, phase in
+                                        content
+                                            .scaleEffect(phase.isIdentity ? 1 : 0.965)
+                                            .opacity(phase.isIdentity ? 1 : 0.86)
+                                    }
                                     .id(shift.id)
                                 }
                             }
@@ -636,17 +659,7 @@ struct MainMapView: View {
         }
         .safeAreaInset(edge: .top) {
             if focusedShiftOnMap == nil {
-                VStack(spacing: 10) {
-                    topControls
-                    if filteredShifts.isEmpty {
-                        Text(I18n.t("empty.city", language))
-                            .font(.caption)
-                            .foregroundStyle(secondaryOnBackground)
-                            .glassCard()
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 2)
+                topControlsContainer(showEmptyHint: filteredShifts.isEmpty)
             }
         }
         .onChange(of: sheetVisibleFraction) { _, _ in
@@ -661,8 +674,6 @@ struct MainMapView: View {
 
             ScrollView {
                 VStack(spacing: 12) {
-                    summaryCard
-
                     if filteredShifts.isEmpty {
                         Text(I18n.t("filters.no_results", language))
                             .font(.subheadline)
@@ -672,11 +683,12 @@ struct MainMapView: View {
                     } else {
                         LazyVStack(spacing: 10) {
                             ForEach(filteredShifts) { shift in
-                                ShiftRow(
+                                ShiftCardView(
                                     shift: shift,
                                     employer: appState.user(by: shift.employerId),
                                     accepted: appState.acceptedApplicationsCount(for: shift.id),
-                                    distanceKm: distanceForDisplay(shift)
+                                    distanceKm: distanceForDisplay(shift),
+                                    layout: .expanded
                                 ) {
                                     selectedShift = shift
                                 }
@@ -690,10 +702,22 @@ struct MainMapView: View {
             }
         }
         .safeAreaInset(edge: .top) {
-            topControls
-                .padding(.horizontal, 16)
-                .padding(.top, 2)
+            topControlsContainer(showEmptyHint: false)
         }
+    }
+
+    private func topControlsContainer(showEmptyHint: Bool) -> some View {
+        VStack(spacing: 10) {
+            topControls
+            if showEmptyHint {
+                Text(I18n.t("empty.city", language))
+                    .font(.caption)
+                    .foregroundStyle(secondaryOnBackground)
+                    .glassCard()
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 2)
     }
 
     private var topControls: some View {
@@ -706,19 +730,14 @@ struct MainMapView: View {
             .pickerStyle(.segmented)
 
             HStack(spacing: 10) {
-                TextField(I18n.t("search.placeholder", language), text: $searchText)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(.thinMaterial)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(isDarkTheme ? .white.opacity(0.25) : .black.opacity(0.12), lineWidth: 1)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                AppSearchField(
+                    text: $searchText,
+                    placeholder: I18n.t("search.placeholder", language)
+                )
 
-                Button {
+                AppIconSquareButton(size: 44, foreground: primaryOnBackground, action: {
                     showFiltersSheet = true
-                } label: {
+                }) {
                     ZStack(alignment: .topTrailing) {
                         Image(systemName: "slider.horizontal.3")
                         if activeFiltersCount > 0 {
@@ -727,27 +746,93 @@ struct MainMapView: View {
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Color.purple)
+                                .background(palette.accent)
                                 .clipShape(Capsule())
                                 .offset(x: 10, y: -10)
                         }
                     }
                 }
-                .buttonStyle(FrostedButtonStyle())
-                .foregroundStyle(primaryOnBackground)
+                .accessibilityLabel("Відкрити фільтри")
+                .accessibilityHint("Налаштувати параметри пошуку підробітку")
 
                 if appState.currentUser?.role == .employer {
-                    Button {
+                    AppIconSquareButton(size: 44, foreground: primaryOnBackground, action: {
                         showCreateShift = true
-                    } label: {
+                    }) {
                         Image(systemName: "plus")
                     }
-                    .buttonStyle(FrostedButtonStyle())
-                    .foregroundStyle(primaryOnBackground)
+                    .accessibilityLabel("Створити вакансію")
+                    .accessibilityHint("Відкрити форму додавання нової зміни")
                 }
+            }
+
+            if appState.currentUser?.role == .worker {
+                quickFiltersBar
             }
         }
         .frostedPanel()
+    }
+
+    private var quickFiltersBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                quickFilterChip(
+                    title: "Усі",
+                    isActive: workFormatFilter == .all
+                ) {
+                    workFormatFilter = .all
+                }
+                quickFilterChip(
+                    title: I18n.t("format.online", language),
+                    isActive: workFormatFilter == .online
+                ) {
+                    workFormatFilter = .online
+                }
+                quickFilterChip(
+                    title: I18n.t("format.offline", language),
+                    isActive: workFormatFilter == .offline
+                ) {
+                    workFormatFilter = .offline
+                }
+                if locationService.currentLocation != nil {
+                    quickFilterChip(
+                        title: "До 5 км",
+                        isActive: maxDistanceKm <= 5
+                    ) {
+                        maxDistanceKm = maxDistanceKm <= 5 ? 20 : 5
+                    }
+                }
+                quickFilterChip(
+                    title: "Сьогодні",
+                    isActive: useDateTimeFilter
+                ) {
+                    useDateTimeFilter.toggle()
+                    if useDateTimeFilter {
+                        desiredDate = Date()
+                    }
+                }
+                quickFilterChip(
+                    title: "Перевірені",
+                    isActive: verifiedOnly
+                ) {
+                    verifiedOnly.toggle()
+                }
+            }
+            .padding(.horizontal, 2)
+        }
+    }
+
+    private func quickFilterChip(title: String, isActive: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(isActive ? .white : primaryOnBackground)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(isActive ? palette.accent : Color.primary.opacity(0.10))
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     private var cityMap: some View {
@@ -801,6 +886,8 @@ struct MainMapView: View {
                     .font(.system(size: 18, weight: .semibold))
                     .rotationEffect(.degrees(mapHeading))
             }
+            .accessibilityLabel("Компас")
+            .accessibilityHint("Повернути карту так, щоб північ була зверху")
 
             mapControlButton(action: {
                 centerOnUserLocationAndSyncCity(animated: true)
@@ -808,6 +895,8 @@ struct MainMapView: View {
                 Image(systemName: "location.fill")
                     .font(.system(size: 18, weight: .semibold))
             }
+            .accessibilityLabel("Моя геолокація")
+            .accessibilityHint("Відцентрувати карту на вашій позиції")
 
             mapControlButton(action: {
                 toggleMapDimension()
@@ -815,6 +904,8 @@ struct MainMapView: View {
                 Text(mapDimensionMode == .twoD ? "2D" : "3D")
                     .font(.system(size: 16, weight: .bold, design: .rounded))
             }
+            .accessibilityLabel("Перемкнути 2D або 3D")
+            .accessibilityValue(mapDimensionMode == .twoD ? "2D" : "3D")
 
             mapControlButton(action: {
                 toggleDrawingMode()
@@ -822,6 +913,8 @@ struct MainMapView: View {
                 Image(systemName: isDrawingArea ? "checkmark" : "pencil")
                     .font(.system(size: 18, weight: .semibold))
             }
+            .accessibilityLabel(isDrawingArea ? "Завершити виділення області" : "Намалювати область пошуку")
+            .accessibilityHint("Обмежити пошук вакансій обраною зоною на карті")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         .allowsHitTesting(focusedShiftOnMap == nil)
@@ -831,20 +924,11 @@ struct MainMapView: View {
     private func mapControlButton<Content: View>(
         action: @escaping () -> Void,
         foreground: Color? = nil,
-        @ViewBuilder content: () -> Content
+        @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        Button(action: action) {
+        AppIconSquareButton(size: 48, foreground: foreground ?? primaryOnBackground, action: action) {
             content()
-                .foregroundStyle(foreground ?? primaryOnBackground)
-                .frame(width: 48, height: 48)
-                .background(.ultraThinMaterial)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(isDarkTheme ? .white.opacity(0.22) : .black.opacity(0.12), lineWidth: 1)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        .buttonStyle(.plain)
     }
 
     private var summaryCard: some View {
@@ -1427,78 +1511,6 @@ private struct UserLocationDotView: View {
     }
 }
 
-private struct ShiftRow: View {
-    let shift: JobShift
-    let employer: AppUser?
-    let accepted: Int
-    let distanceKm: Double?
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text(shift.title)
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Spacer()
-                    Text(shift.status.title)
-                        .font(.caption.bold())
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(shift.status == .open ? Color.purple.opacity(0.24) : Color.gray.opacity(0.22))
-                        .clipShape(Capsule())
-                        .foregroundStyle(.primary)
-                }
-
-                Text(shift.details)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-
-                Text(shift.address)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-
-                HStack {
-                    Label("\(shift.pay) грн/год", systemImage: "dollarsign.circle")
-                    Label("\(shift.durationHours) год", systemImage: "clock")
-                    Label(shift.workFormat.title, systemImage: shift.workFormat == .online ? "wifi" : "mappin.and.ellipse")
-                    Label("\(accepted)/\(shift.requiredWorkers)", systemImage: "person.3")
-                    if let distanceKm {
-                        Label("\(distanceKm, specifier: "%.1f") км", systemImage: "road.lanes")
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-                if let employer {
-                    HStack {
-                        Label(employer.name, systemImage: "building.2")
-                            .lineLimit(1)
-                        if employer.isVerifiedEmployer {
-                            Label("Перевірено", systemImage: "checkmark.seal.fill")
-                                .foregroundStyle(.purple)
-                        }
-                        Text("• \(Int(employer.reliabilityScore))%")
-                            .foregroundStyle(.secondary)
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                } else {
-                    Color.clear
-                        .frame(height: 16)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .glassCard()
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 private struct FiltersSheet: View {
     let language: AppLanguage
     let isWorker: Bool
@@ -1522,12 +1534,16 @@ private struct FiltersSheet: View {
         resolvedTheme(from: appThemeRawValue) == .dark
     }
 
+    private var palette: AppPalette {
+        AppPalette.forTheme(resolvedTheme(from: appThemeRawValue))
+    }
+
     private var primaryText: Color {
-        isDarkTheme ? .white : .black
+        palette.textPrimary
     }
 
     private var secondaryText: Color {
-        isDarkTheme ? .white.opacity(0.85) : .black.opacity(0.75)
+        palette.textSecondary
     }
 
     var body: some View {
@@ -1548,7 +1564,7 @@ private struct FiltersSheet: View {
                                 }
                             }
                             .pickerStyle(.segmented)
-                            .tint(.purple)
+                            .tint(palette.accent)
                         }
 
                         filterCard(title: "Бюджет і тривалість") {
@@ -1556,12 +1572,12 @@ private struct FiltersSheet: View {
                                 Text("\(I18n.t("filters.min_pay", language)): \(Int(minPay)) грн/год")
                                     .foregroundStyle(secondaryText)
                                 Slider(value: $minPay, in: 0...500, step: 10)
-                                    .tint(.purple)
+                                    .tint(palette.accent)
 
                                 Text("\(I18n.t("filters.max_duration", language)): \(Int(maxDuration)) год")
                                     .foregroundStyle(secondaryText)
                                 Slider(value: $maxDuration, in: 1...24, step: 1)
-                                    .tint(.purple)
+                                    .tint(palette.accent)
                             }
                         }
 
@@ -1571,27 +1587,27 @@ private struct FiltersSheet: View {
                                     Text("\(I18n.t("filters.max_distance", language)): \(Int(maxDistanceKm)) \(I18n.t("filters.distance_km", language))")
                                         .foregroundStyle(secondaryText)
                                     Slider(value: $maxDistanceKm, in: 1...100, step: 1)
-                                        .tint(.purple)
+                                        .tint(palette.accent)
                                 }
                             }
                         }
 
                         filterCard(title: "Дата і час") {
                             Toggle("Фільтр за датою та часом", isOn: $useDateTimeFilter)
-                                .tint(.purple)
+                                .tint(palette.accent)
                                 .foregroundStyle(primaryText)
 
                             if useDateTimeFilter {
                                 DatePicker("Бажана дата", selection: $desiredDate, displayedComponents: .date)
-                                    .tint(.purple)
+                                    .tint(palette.accent)
                                     .foregroundStyle(primaryText)
 
                                 DatePicker("Від", selection: $desiredFromTime, displayedComponents: .hourAndMinute)
-                                    .tint(.purple)
+                                    .tint(palette.accent)
                                     .foregroundStyle(primaryText)
 
                                 DatePicker("До", selection: $desiredToTime, displayedComponents: .hourAndMinute)
-                                    .tint(.purple)
+                                    .tint(palette.accent)
                                     .foregroundStyle(primaryText)
                             }
                         }
@@ -1599,7 +1615,7 @@ private struct FiltersSheet: View {
                         if isWorker {
                             filterCard(title: "Надійність") {
                                 Toggle(I18n.t("filters.verified", language), isOn: $verifiedOnly)
-                                    .tint(.purple)
+                                    .tint(palette.accent)
                                     .foregroundStyle(primaryText)
                             }
                         }
@@ -1612,7 +1628,7 @@ private struct FiltersSheet: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
                                 .foregroundStyle(.white)
-                                .background(Color.purple)
+                                .background(palette.accent)
                                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                         }
                     }
@@ -1635,7 +1651,7 @@ private struct FiltersSheet: View {
     private func filterCard<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
-                .font(.system(size: 34, weight: .bold, design: .rounded))
+                .font(.system(size: 24, weight: .bold, design: .rounded))
                 .foregroundStyle(primaryText)
             content()
         }
@@ -1662,7 +1678,7 @@ private struct FiltersSheet: View {
                             .foregroundStyle(selectedCityName == city ? .white : primaryText)
                             .background(
                                 selectedCityName == city
-                                    ? Color.purple
+                                    ? palette.accent
                                     : (isDarkTheme ? Color.white.opacity(0.14) : Color.black.opacity(0.08))
                             )
                             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))

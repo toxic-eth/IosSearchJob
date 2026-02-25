@@ -39,11 +39,13 @@ struct MapboxJobsMapView: UIViewRepresentable {
         ornaments.compass.visibility = .hidden
         ornaments.scaleBar.visibility = .hidden
         ornaments.logo.position = .bottomLeading
-        ornaments.logo.margins = CGPoint(x: 8, y: 6)
+        ornaments.logo.margins = CGPoint(x: 40, y: -39)
         ornaments.attributionButton.position = .bottomTrailing
-        ornaments.attributionButton.margins = CGPoint(x: 8, y: 6)
-        ornaments.attributionButton.tintColor = UIColor.white.withAlphaComponent(0.78)
+        ornaments.attributionButton.margins = CGPoint(x: 40, y: -39)
+        ornaments.attributionButton.tintColor = UIColor.white.withAlphaComponent(0.55)
         mapView.ornaments.options = ornaments
+        mapView.ornaments.logoView.alpha = 0.0
+        mapView.ornaments.attributionButton.alpha = 0.0
 
         mapView.location.options.puckType = .puck2D()
         context.coordinator.pointManager = mapView.annotations.makePointAnnotationManager(
@@ -200,12 +202,12 @@ struct MapboxJobsMapView: UIViewRepresentable {
 
         static func clusterOptions() -> ClusterOptions {
             ClusterOptions(
-                circleRadius: .constant(20),
-                circleColor: .constant(StyleColor(UIColor(red: 0.26, green: 0.16, blue: 0.46, alpha: 0.88))),
-                textColor: .constant(StyleColor(UIColor(red: 0.97, green: 0.63, blue: 0.90, alpha: 1.0))),
-                textSize: .constant(13),
+                circleRadius: .constant(22),
+                circleColor: .constant(StyleColor(UIColor(red: 0.42, green: 0.22, blue: 0.78, alpha: 0.92))),
+                textColor: .constant(StyleColor(UIColor.white)),
+                textSize: .constant(12),
                 textField: .expression(Exp(.get) { "point_count" }),
-                clusterRadius: 58,
+                clusterRadius: 50,
                 clusterMaxZoom: 14,
                 clusterMinPoints: 2
             )
@@ -213,28 +215,27 @@ struct MapboxJobsMapView: UIViewRepresentable {
 
         static func pinImage(pay: Int, isFocused: Bool) -> UIImage {
             let bubbleText = "\(pay) грн/год"
-            let roseText = isFocused
-                ? UIColor(red: 1.00, green: 0.70, blue: 0.93, alpha: 1.0)
-                : UIColor(red: 0.97, green: 0.58, blue: 0.88, alpha: 1.0)
+            let textColor = UIColor.white
             let accent = isFocused
-                ? UIColor(red: 0.66, green: 0.43, blue: 0.98, alpha: 1.0)
-                : UIColor(red: 0.56, green: 0.34, blue: 0.90, alpha: 1.0)
+                ? UIColor(red: 0.78, green: 0.42, blue: 1.0, alpha: 1.0)
+                : UIColor(red: 0.66, green: 0.34, blue: 0.94, alpha: 1.0)
+            let bubbleFill = UIColor(red: 0.10, green: 0.10, blue: 0.16, alpha: 0.90)
             let textAttributes: [NSAttributedString.Key: Any] = [
                 .font: UIFont.systemFont(ofSize: 10, weight: .semibold),
-                .foregroundColor: roseText
+                .foregroundColor: textColor
             ]
             let textSize = (bubbleText as NSString).size(withAttributes: textAttributes)
             let bubbleWidth = max(70, textSize.width + 18)
             let width = bubbleWidth
-            let height: CGFloat = 52
-            let bubbleRect = CGRect(x: 0, y: 0, width: bubbleWidth, height: 20)
+            let height: CGFloat = 46
+            let bubbleRect = CGRect(x: 0, y: 0, width: bubbleWidth, height: 22)
 
             let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: height))
             return renderer.image { ctx in
                 let cg = ctx.cgContext
 
-                let bubblePath = UIBezierPath(roundedRect: bubbleRect, cornerRadius: 10)
-                cg.setFillColor(UIColor.black.withAlphaComponent(0.40).cgColor)
+                let bubblePath = UIBezierPath(roundedRect: bubbleRect, cornerRadius: 11)
+                cg.setFillColor(bubbleFill.cgColor)
                 bubblePath.fill()
                 cg.setStrokeColor(accent.withAlphaComponent(0.85).cgColor)
                 cg.setLineWidth(1.2)
@@ -248,18 +249,18 @@ struct MapboxJobsMapView: UIViewRepresentable {
                 )
                 (bubbleText as NSString).draw(in: textRect, withAttributes: textAttributes)
 
-                let pinCenter = CGPoint(x: width / 2, y: bubbleRect.maxY + 14.5)
-                let outerRadius: CGFloat = isFocused ? 9.5 : 8.5
-                let innerRadius: CGFloat = 3.5
+                let pinCenter = CGPoint(x: width / 2, y: bubbleRect.maxY + 11.5)
+                let outerRadius: CGFloat = isFocused ? 7.5 : 6.5
+                let innerRadius: CGFloat = 2.6
 
-                cg.setFillColor(UIColor.black.withAlphaComponent(0.45).cgColor)
+                cg.setFillColor(UIColor.black.withAlphaComponent(0.55).cgColor)
                 cg.addEllipse(in: CGRect(x: pinCenter.x - outerRadius, y: pinCenter.y - outerRadius, width: outerRadius * 2, height: outerRadius * 2))
                 cg.fillPath()
                 cg.setStrokeColor(accent.cgColor)
                 cg.setLineWidth(1.6)
                 cg.strokeEllipse(in: CGRect(x: pinCenter.x - outerRadius, y: pinCenter.y - outerRadius, width: outerRadius * 2, height: outerRadius * 2))
 
-                cg.setFillColor(roseText.cgColor)
+                cg.setFillColor(textColor.cgColor)
                 cg.addEllipse(in: CGRect(x: pinCenter.x - innerRadius, y: pinCenter.y - innerRadius, width: innerRadius * 2, height: innerRadius * 2))
                 cg.fillPath()
             }

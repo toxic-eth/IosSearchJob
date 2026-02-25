@@ -11,13 +11,17 @@
 		14FE858DA575E84D14710578 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB082A05800D8CDB8653AB7 /* LoginView.swift */; };
 		192E351C88F8AFEF668A2524 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03136F2C8400F1F5442BE0A /* OnboardingView.swift */; };
 		2657DF99DC16FDF6B6CED59A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8FB632774EEF1A89320CFAA /* AppState.swift */; };
+		3C386BFE2EA0AC6F64F442FD /* ShiftCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7196205142B92482E8AF95CE /* ShiftCardView.swift */; };
 		3C7B8A41DA91CA6B9CAB57C1 /* MainMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 249336023E0F0D2D4E911C04 /* MainMapView.swift */; };
 		3EAA2640A860C12071D7552C /* MapboxJobsMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFE846BEC127C159E89A23BD /* MapboxJobsMapView.swift */; };
+		433141E2BB633D9B34E588CA /* AuthSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 663FBF6C83CCBB3188C33E8B /* AuthSessionStore.swift */; };
 		4423740DBD5C313AAA8CB444 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA9A58F8B6B0D81B7404FC91 /* ProfileView.swift */; };
+		49956FE9C9793001ACC61C15 /* DESIGN_UX_AUDIT_2026-02-25.md in Resources */ = {isa = PBXBuildFile; fileRef = 0D849F2BD753A3BAB69848CC /* DESIGN_UX_AUDIT_2026-02-25.md */; };
 		4AA1DFC50DA66FB6C0B9858D /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3930B36B26B370876C1CA684 /* Localization.swift */; };
 		4C9C49CDFCCF5B167EAE2DE1 /* AppStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54400FC6BCFF277EA9A9C349 /* AppStyle.swift */; };
 		60AD63EB932B5E0170BD69FF /* PhoneVerificationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E78CE607BDE74112CF6C274 /* PhoneVerificationView.swift */; };
 		6583CC50223C5432812211B6 /* PRODUCT_COMPETITOR_REPORT_2026-02-24.md in Resources */ = {isa = PBXBuildFile; fileRef = 764C778B328A1067DBF7BFD8 /* PRODUCT_COMPETITOR_REPORT_2026-02-24.md */; };
+		6F0E5E2661D011ED090BEA55 /* AuthAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 524085A6F79D7E4FFBBA1DF0 /* AuthAPIClient.swift */; };
 		70EBCD893F7D97897A2D0DA9 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C894EB9ABD4D9A6AC1BA1772 /* ContentView.swift */; };
 		7A9A479987ED066C6882343C /* ActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F59D843B932A45A53FDB3A9 /* ActivityView.swift */; };
 		82E98AD661CDBEC1DBEC9266 /* RoleSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD0B94CB1246452B3FF86CCD /* RoleSelectionView.swift */; };
@@ -26,6 +30,9 @@
 		9E7F2BB292951B1A95CF83C8 /* ShiftDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 244C116E2B6BA5B0A7B76053 /* ShiftDetailView.swift */; };
 		AFDB0521A62351AA456AFD8F /* AddShiftView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59DD79D2835116A42471AB3C /* AddShiftView.swift */; };
 		B63B10275B08661AC39C9FDA /* NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08A22F9479DF8319F4958C3D /* NotificationsView.swift */; };
+		BC8CECB45925251D668C7DA9 /* LEGAL_RELEASE_BASELINE.md in Resources */ = {isa = PBXBuildFile; fileRef = 5BA09EECDBB6FFB6ABFBBA62 /* LEGAL_RELEASE_BASELINE.md */; };
+		BD5B0741BB2ABD949B79D40A /* RELEASE_CHECKLIST.md in Resources */ = {isa = PBXBuildFile; fileRef = FF10FB39806DE9D29F0CF76B /* RELEASE_CHECKLIST.md */; };
+		C4FD3E706ED13F02AF66E2A7 /* DESIGN_ROADMAP_2026-02-25.md in Resources */ = {isa = PBXBuildFile; fileRef = A764ADCC210FE015AF20A1DB /* DESIGN_ROADMAP_2026-02-25.md */; };
 		C71717B46419929E4471D2C0 /* MapboxMaps in Frameworks */ = {isa = PBXBuildFile; productRef = 1CEDFEE7A03D72A58D3BD33C /* MapboxMaps */; };
 		C99D8860706C373538D484BD /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F254DCDF256DAF3C54F5B6E /* Models.swift */; };
 		D8E138E6F4274FB52DCBF900 /* LocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D338FB73AF734A49A62F18B /* LocationService.swift */; };
@@ -35,18 +42,24 @@
 
 /* Begin PBXFileReference section */
 		08A22F9479DF8319F4958C3D /* NotificationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsView.swift; sourceTree = "<group>"; };
+		0D849F2BD753A3BAB69848CC /* DESIGN_UX_AUDIT_2026-02-25.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "DESIGN_UX_AUDIT_2026-02-25.md"; sourceTree = "<group>"; };
 		244C116E2B6BA5B0A7B76053 /* ShiftDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShiftDetailView.swift; sourceTree = "<group>"; };
 		249336023E0F0D2D4E911C04 /* MainMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainMapView.swift; sourceTree = "<group>"; };
 		3831FC63210FE8C6A907569F /* ModerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModerationView.swift; sourceTree = "<group>"; };
 		3930B36B26B370876C1CA684 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
 		3F254DCDF256DAF3C54F5B6E /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		3F59D843B932A45A53FDB3A9 /* ActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityView.swift; sourceTree = "<group>"; };
+		524085A6F79D7E4FFBBA1DF0 /* AuthAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthAPIClient.swift; sourceTree = "<group>"; };
 		54400FC6BCFF277EA9A9C349 /* AppStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStyle.swift; sourceTree = "<group>"; };
 		59DD79D2835116A42471AB3C /* AddShiftView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddShiftView.swift; sourceTree = "<group>"; };
+		5BA09EECDBB6FFB6ABFBBA62 /* LEGAL_RELEASE_BASELINE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = LEGAL_RELEASE_BASELINE.md; sourceTree = "<group>"; };
 		5C1EBFEE688FFC116FF701DD /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
+		663FBF6C83CCBB3188C33E8B /* AuthSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthSessionStore.swift; sourceTree = "<group>"; };
+		7196205142B92482E8AF95CE /* ShiftCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShiftCardView.swift; sourceTree = "<group>"; };
 		764C778B328A1067DBF7BFD8 /* PRODUCT_COMPETITOR_REPORT_2026-02-24.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "PRODUCT_COMPETITOR_REPORT_2026-02-24.md"; sourceTree = "<group>"; };
 		7D338FB73AF734A49A62F18B /* LocationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationService.swift; sourceTree = "<group>"; };
 		9E78CE607BDE74112CF6C274 /* PhoneVerificationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneVerificationView.swift; sourceTree = "<group>"; };
+		A764ADCC210FE015AF20A1DB /* DESIGN_ROADMAP_2026-02-25.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "DESIGN_ROADMAP_2026-02-25.md"; sourceTree = "<group>"; };
 		AA5888CF87E20959327F1088 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		B843BB799C8237174C77A4B1 /* QuickGigMVP.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = QuickGigMVP.xcodeproj; sourceTree = "<group>"; };
 		B8FB632774EEF1A89320CFAA /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -58,6 +71,7 @@
 		DAB082A05800D8CDB8653AB7 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		DD0B94CB1246452B3FF86CCD /* RoleSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoleSelectionView.swift; sourceTree = "<group>"; };
 		F478A1B9B3F2A2FA8B03D049 /* QuickGigMVP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = QuickGigMVP.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FF10FB39806DE9D29F0CF76B /* RELEASE_CHECKLIST.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = RELEASE_CHECKLIST.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -72,7 +86,7 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		0A30F2C32F4E6E2D000A8DEB /* Products */ = {
+		0AFD15B62F4FBC4700E7AB87 /* Products */ = {
 			isa = PBXGroup;
 			name = Products;
 			sourceTree = "<group>";
@@ -111,6 +125,7 @@
 				CA9A58F8B6B0D81B7404FC91 /* ProfileView.swift */,
 				DD0B94CB1246452B3FF86CCD /* RoleSelectionView.swift */,
 				AA5888CF87E20959327F1088 /* SettingsView.swift */,
+				7196205142B92482E8AF95CE /* ShiftCardView.swift */,
 				244C116E2B6BA5B0A7B76053 /* ShiftDetailView.swift */,
 			);
 			path = Views;
@@ -120,10 +135,14 @@
 			isa = PBXGroup;
 			children = (
 				C894EB9ABD4D9A6AC1BA1772 /* ContentView.swift */,
+				A764ADCC210FE015AF20A1DB /* DESIGN_ROADMAP_2026-02-25.md */,
+				0D849F2BD753A3BAB69848CC /* DESIGN_UX_AUDIT_2026-02-25.md */,
+				5BA09EECDBB6FFB6ABFBBA62 /* LEGAL_RELEASE_BASELINE.md */,
 				3F254DCDF256DAF3C54F5B6E /* Models.swift */,
 				764C778B328A1067DBF7BFD8 /* PRODUCT_COMPETITOR_REPORT_2026-02-24.md */,
 				B843BB799C8237174C77A4B1 /* QuickGigMVP.xcodeproj */,
 				D658184857A76782E43B728C /* QuickGigMVPApp.swift */,
+				FF10FB39806DE9D29F0CF76B /* RELEASE_CHECKLIST.md */,
 			);
 			name = QuickGigMVP;
 			path = .;
@@ -133,6 +152,8 @@
 			isa = PBXGroup;
 			children = (
 				B8FB632774EEF1A89320CFAA /* AppState.swift */,
+				524085A6F79D7E4FFBBA1DF0 /* AuthAPIClient.swift */,
+				663FBF6C83CCBB3188C33E8B /* AuthSessionStore.swift */,
 				3930B36B26B370876C1CA684 /* Localization.swift */,
 				7D338FB73AF734A49A62F18B /* LocationService.swift */,
 				5C1EBFEE688FFC116FF701DD /* NotificationService.swift */,
@@ -188,7 +209,7 @@
 			projectDirPath = "";
 			projectReferences = (
 				{
-					ProductGroup = 0A30F2C32F4E6E2D000A8DEB /* Products */;
+					ProductGroup = 0AFD15B62F4FBC4700E7AB87 /* Products */;
 					ProjectRef = B843BB799C8237174C77A4B1 /* QuickGigMVP.xcodeproj */;
 				},
 			);
@@ -204,8 +225,12 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C4FD3E706ED13F02AF66E2A7 /* DESIGN_ROADMAP_2026-02-25.md in Resources */,
+				49956FE9C9793001ACC61C15 /* DESIGN_UX_AUDIT_2026-02-25.md in Resources */,
+				BC8CECB45925251D668C7DA9 /* LEGAL_RELEASE_BASELINE.md in Resources */,
 				6583CC50223C5432812211B6 /* PRODUCT_COMPETITOR_REPORT_2026-02-24.md in Resources */,
 				1130B69C944F691495C09DB6 /* QuickGigMVP.xcodeproj in Resources */,
+				BD5B0741BB2ABD949B79D40A /* RELEASE_CHECKLIST.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -220,6 +245,8 @@
 				AFDB0521A62351AA456AFD8F /* AddShiftView.swift in Sources */,
 				2657DF99DC16FDF6B6CED59A /* AppState.swift in Sources */,
 				4C9C49CDFCCF5B167EAE2DE1 /* AppStyle.swift in Sources */,
+				6F0E5E2661D011ED090BEA55 /* AuthAPIClient.swift in Sources */,
+				433141E2BB633D9B34E588CA /* AuthSessionStore.swift in Sources */,
 				70EBCD893F7D97897A2D0DA9 /* ContentView.swift in Sources */,
 				4AA1DFC50DA66FB6C0B9858D /* Localization.swift in Sources */,
 				D8E138E6F4274FB52DCBF900 /* LocationService.swift in Sources */,
@@ -236,6 +263,7 @@
 				9782F70A69432AD30175FA24 /* QuickGigMVPApp.swift in Sources */,
 				82E98AD661CDBEC1DBEC9266 /* RoleSelectionView.swift in Sources */,
 				E537D03D47507DA9C0BF83E0 /* SettingsView.swift in Sources */,
+				3C386BFE2EA0AC6F64F442FD /* ShiftCardView.swift in Sources */,
 				9E7F2BB292951B1A95CF83C8 /* ShiftDetailView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -367,10 +395,16 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				DEVELOPMENT_TEAM = 7P6MF54755;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_APIBaseURL = "http://127.0.0.1:8000/api";
 				INFOPLIST_KEY_CFBundleDisplayName = "QuickGig MVP";
 				INFOPLIST_KEY_MBXAccessToken = "$(MAPBOX_ACCESS_TOKEN)";
 				INFOPLIST_KEY_MGLMapboxAccessToken = "$(MAPBOX_ACCESS_TOKEN)";
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Ми використовуємо геолокацію, щоб показувати підробіток у вашому регіоні України.";
+				INFOPLIST_KEY_PrivacyPolicyURL = "http://127.0.0.1:8000/legal/privacy";
+				INFOPLIST_KEY_SupportEmail = "support@quickgig.app";
+				INFOPLIST_KEY_SupportURL = "http://127.0.0.1:8000/legal/support";
+				INFOPLIST_KEY_TermsOfUseURL = "http://127.0.0.1:8000/legal/terms";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -391,10 +425,16 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				DEVELOPMENT_TEAM = 7P6MF54755;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_APIBaseURL = "http://127.0.0.1:8000/api";
 				INFOPLIST_KEY_CFBundleDisplayName = "QuickGig MVP";
 				INFOPLIST_KEY_MBXAccessToken = "$(MAPBOX_ACCESS_TOKEN)";
 				INFOPLIST_KEY_MGLMapboxAccessToken = "$(MAPBOX_ACCESS_TOKEN)";
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Ми використовуємо геолокацію, щоб показувати підробіток у вашому регіоні України.";
+				INFOPLIST_KEY_PrivacyPolicyURL = "http://127.0.0.1:8000/legal/privacy";
+				INFOPLIST_KEY_SupportEmail = "support@quickgig.app";
+				INFOPLIST_KEY_SupportURL = "http://127.0.0.1:8000/legal/support";
+				INFOPLIST_KEY_TermsOfUseURL = "http://127.0.0.1:8000/legal/terms";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;

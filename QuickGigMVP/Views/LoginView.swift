@@ -81,11 +81,23 @@ struct LoginView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
 
-                            Button(actionTitle) {
-                                submit()
+                            Button {
+                                Task {
+                                    await submit()
+                                }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    if appState.isAuthInFlight {
+                                        ProgressView()
+                                            .tint(.white)
+                                    }
+                                    Text(actionTitle)
+                                }
+                                .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.borderedProminent)
                             .frame(maxWidth: .infinity)
+                            .disabled(appState.isAuthInFlight)
 
                             HStack(spacing: 10) {
                                 Rectangle()
@@ -193,9 +205,13 @@ struct LoginView: View {
             : "Я шукаю підробіток"
     }
 
-    private func submit() {
+    @MainActor
+    private func submit() async {
         if mode == .login {
-            _ = appState.login(phone: phone, password: password, expectedRole: selectedRole)
+            let success = await appState.loginWithBackend(phone: phone, password: password, expectedRole: selectedRole)
+            if !success {
+                _ = appState.login(phone: phone, password: password, expectedRole: selectedRole)
+            }
             return
         }
 
@@ -204,7 +220,10 @@ struct LoginView: View {
             return
         }
 
-        _ = appState.register(name: name, phone: phone, password: password, role: selectedRole)
+        let success = await appState.registerWithBackend(name: name, phone: phone, password: password, role: selectedRole)
+        if !success {
+            _ = appState.register(name: name, phone: phone, password: password, role: selectedRole)
+        }
     }
 }
 

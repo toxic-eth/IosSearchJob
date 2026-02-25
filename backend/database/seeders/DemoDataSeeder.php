@@ -18,6 +18,7 @@ class DemoDataSeeder extends Seeder
     {
         $employer = User::create([
             'name' => 'Cafe Central',
+            'phone' => '380671112233',
             'email' => 'cafe@quickgig.app',
             'password' => '123456',
             'role' => 'employer',
@@ -25,6 +26,7 @@ class DemoDataSeeder extends Seeder
 
         $worker = User::create([
             'name' => 'Alex Ivanov',
+            'phone' => '380673334455',
             'email' => 'alex@quickgig.app',
             'password' => '123456',
             'role' => 'worker',

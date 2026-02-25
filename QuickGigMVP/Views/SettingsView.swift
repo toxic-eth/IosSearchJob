@@ -13,6 +13,23 @@ struct SettingsView: View {
     @State private var newEmailForChange = ""
 
     private var language: AppLanguage { resolvedLanguage(from: appLanguageRawValue) }
+    private var privacyPolicyURL: URL {
+        configuredURL(for: "PrivacyPolicyURL", fallback: "http://127.0.0.1:8000/legal/privacy")
+    }
+    private var termsURL: URL {
+        configuredURL(for: "TermsOfUseURL", fallback: "http://127.0.0.1:8000/legal/terms")
+    }
+    private var supportURL: URL {
+        configuredURL(for: "SupportURL", fallback: "http://127.0.0.1:8000/legal/support")
+    }
+    private var supportEmail: String {
+        let raw = Bundle.main.object(forInfoDictionaryKey: "SupportEmail") as? String
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "support@quickgig.app" : trimmed
+    }
+    private var supportMailURL: URL {
+        URL(string: "mailto:\(supportEmail)") ?? URL(string: "mailto:support@quickgig.app")!
+    }
 
     var body: some View {
         NavigationStack {
@@ -70,6 +87,41 @@ struct SettingsView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .glassCard()
+
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(I18n.t("settings.legal", language))
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+
+                            legalLinkRow(
+                                title: I18n.t("settings.privacy_policy", language),
+                                url: privacyPolicyURL
+                            )
+                            legalLinkRow(
+                                title: I18n.t("settings.terms_of_use", language),
+                                url: termsURL
+                            )
+                            legalLinkRow(
+                                title: I18n.t("settings.support_site", language),
+                                url: supportURL
+                            )
+
+                            Link(destination: supportMailURL) {
+                                HStack {
+                                    Text(I18n.t("settings.support_email", language))
+                                    Spacer()
+                                    Text(supportEmail)
+                                        .foregroundStyle(.secondary)
+                                    Image(systemName: "arrow.up.right.square")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .font(.subheadline)
+                                .foregroundStyle(.primary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .glassCard()
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 12)
@@ -88,6 +140,29 @@ struct SettingsView: View {
                 securityEmail = appState.currentUser?.email ?? ""
             }
         }
+    }
+
+    private func configuredURL(for key: String, fallback: String) -> URL {
+        let raw = Bundle.main.object(forInfoDictionaryKey: key) as? String
+        let candidate = (raw?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+            ? raw!
+            : fallback
+        return URL(string: candidate) ?? URL(string: fallback)!
+    }
+
+    @ViewBuilder
+    private func legalLinkRow(title: String, url: URL) -> some View {
+        Link(destination: url) {
+            HStack {
+                Text(title)
+                Spacer()
+                Image(systemName: "arrow.up.right.square")
+                    .foregroundStyle(.secondary)
+            }
+            .font(.subheadline)
+            .foregroundStyle(.primary)
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder

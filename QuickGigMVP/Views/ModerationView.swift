@@ -63,10 +63,13 @@ struct ModerationView: View {
                         .padding(.bottom, 20)
                     }
                 } else {
-                    Text("Доступ до модерації мають лише призначені модератори")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .padding(20)
+                    AppStateBanner(
+                        title: "Немає доступу",
+                        message: "Доступ до модерації мають лише призначені модератори.",
+                        tone: .warning
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
                 }
             }
             .navigationTitle("Модерація")
@@ -229,12 +232,7 @@ struct ModerationView: View {
                 Text("\(item.type.title) • \(item.subject)")
                     .font(.caption.bold())
                 Spacer()
-                Text(item.status.title)
-                    .font(.caption2.bold())
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background((overdue ? Color.orange : Color.blue).opacity(0.2))
-                    .clipShape(Capsule())
+                AppStatusPill(title: item.status.title, tone: overdue ? .warning : .info)
             }
 
             Text(item.details)
@@ -252,6 +250,14 @@ struct ModerationView: View {
             }
             .font(.caption2)
             .foregroundStyle(overdue ? .orange : .secondary)
+
+            if overdue {
+                AppStateBanner(
+                    title: "SLA risk",
+                    message: "Кейс перевищив SLA, рекомендовано пріоритетний розгляд.",
+                    tone: .warning
+                )
+            }
 
             if canAssign {
                 HStack(spacing: 8) {

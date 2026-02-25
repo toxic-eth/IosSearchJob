@@ -21,6 +21,12 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_CFBundleDisplayName: QuickGig MVP
         INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: Ми використовуємо геолокацію, щоб показувати підробіток у вашому регіоні України.
+        INFOPLIST_KEY_APIBaseURL: http://127.0.0.1:8000/api
+        INFOPLIST_KEY_PrivacyPolicyURL: http://127.0.0.1:8000/legal/privacy
+        INFOPLIST_KEY_TermsOfUseURL: http://127.0.0.1:8000/legal/terms
+        INFOPLIST_KEY_SupportURL: http://127.0.0.1:8000/legal/support
+        INFOPLIST_KEY_SupportEmail: support@quickgig.app
+        INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads: YES
         INFOPLIST_KEY_MBXAccessToken: $(MAPBOX_ACCESS_TOKEN)
         INFOPLIST_KEY_MGLMapboxAccessToken: $(MAPBOX_ACCESS_TOKEN)
         GENERATE_INFOPLIST_FILE: YES

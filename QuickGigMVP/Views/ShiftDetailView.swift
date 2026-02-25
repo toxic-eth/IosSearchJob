@@ -50,6 +50,21 @@ struct ShiftDetailView: View {
                     }
                 }
 
+                if let currentUser {
+                    Section("Стан угоди") {
+                        HStack(spacing: 8) {
+                            ShiftStatusBadge(status: liveShift.status)
+                            if let application = appState.application(for: liveShift.id, workerId: currentUser.id) {
+                                ApplicationStatusBadge(status: application.status)
+                                if application.status == .accepted {
+                                    WorkProgressBadge(status: application.progressStatus)
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+
                 if let employer = appState.user(by: liveShift.employerId) {
                     Section("Роботодавець") {
                         HStack {
@@ -453,34 +468,17 @@ private struct ApplicationStatusBadge: View {
     let status: ApplicationStatus
 
     var body: some View {
-        Text(status.title)
-            .font(.caption.bold())
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(backgroundColor)
-            .foregroundStyle(textColor)
-            .clipShape(Capsule())
+        AppStatusPill(title: status.title, tone: tone)
     }
 
-    private var backgroundColor: Color {
+    private var tone: AppPillTone {
         switch status {
         case .pending:
-            return .orange.opacity(0.2)
+            return .warning
         case .accepted:
-            return .green.opacity(0.2)
+            return .success
         case .rejected:
-            return .red.opacity(0.2)
-        }
-    }
-
-    private var textColor: Color {
-        switch status {
-        case .pending:
-            return .orange
-        case .accepted:
-            return .green
-        case .rejected:
-            return .red
+            return .danger
         }
     }
 }
@@ -489,13 +487,7 @@ private struct ShiftStatusBadge: View {
     let status: ShiftStatus
 
     var body: some View {
-        Text(status.title)
-            .font(.caption.bold())
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(status == .open ? Color.blue.opacity(0.2) : Color.gray.opacity(0.2))
-            .foregroundStyle(status == .open ? Color.blue : Color.gray)
-            .clipShape(Capsule())
+        AppStatusPill(title: status.title, tone: status == .open ? .info : .neutral)
     }
 }
 
@@ -503,38 +495,19 @@ private struct WorkProgressBadge: View {
     let status: WorkProgressStatus
 
     var body: some View {
-        Text(status.title)
-            .font(.caption.bold())
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(backgroundColor)
-            .foregroundStyle(textColor)
-            .clipShape(Capsule())
+        AppStatusPill(title: status.title, tone: tone)
     }
 
-    private var backgroundColor: Color {
+    private var tone: AppPillTone {
         switch status {
         case .scheduled:
-            return .blue.opacity(0.2)
+            return .info
         case .inProgress:
-            return .orange.opacity(0.2)
+            return .warning
         case .completed:
-            return .purple.opacity(0.2)
+            return .accent
         case .paid:
-            return .green.opacity(0.2)
-        }
-    }
-
-    private var textColor: Color {
-        switch status {
-        case .scheduled:
-            return .blue
-        case .inProgress:
-            return .orange
-        case .completed:
-            return .purple
-        case .paid:
-            return .green
+            return .success
         }
     }
 }

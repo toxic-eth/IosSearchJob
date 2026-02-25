@@ -15,12 +15,19 @@ class AuthController extends Controller
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:120'],
-            'email' => ['required', 'email', 'max:120', 'unique:users,email'],
+            'phone' => ['required', 'regex:/^380\d{9}$/', 'unique:users,phone'],
+            'email' => ['nullable', 'email', 'max:120', 'unique:users,email'],
             'password' => ['required', 'string', 'min:6'],
             'role' => ['required', 'in:worker,employer'],
         ]);
 
-        $user = User::create($validated);
+        $user = User::create([
+            'name' => $validated['name'],
+            'phone' => $validated['phone'],
+            'email' => $validated['email'] ?? ($validated['phone'].'@phone.quickgig.local'),
+            'password' => $validated['password'],
+            'role' => $validated['role'],
+        ]);
         $token = $user->createToken('ios-app')->plainTextToken;
 
         return response()->json([
@@ -32,15 +39,15 @@ class AuthController extends Controller
     public function login(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'email' => ['required', 'email'],
+            'phone' => ['required', 'regex:/^380\d{9}$/'],
             'password' => ['required', 'string'],
         ]);
 
-        $user = User::where('email', $validated['email'])->first();
+        $user = User::where('phone', $validated['phone'])->first();
 
         if (!$user || !Hash::check($validated['password'], $user->password)) {
             throw ValidationException::withMessages([
-                'email' => ['Неверные учетные данные'],
+                'phone' => ['Невірні облікові дані'],
             ]);
         }
 
@@ -61,6 +68,7 @@ class AuthController extends Controller
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
+                'phone' => $user->phone,
                 'email' => $user->email,
                 'role' => $user->role,
                 'rating' => $rating ? round((float) $rating, 1) : 0,

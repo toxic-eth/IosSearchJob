@@ -26,6 +26,15 @@ struct ProfileView: View {
                 if let currentUser = appState.currentUser {
                     ScrollView {
                         VStack(spacing: 12) {
+                            if let error = appState.authErrorMessage, !error.isEmpty {
+                                AppStateBanner(
+                                    title: "Потрібна увага",
+                                    message: error,
+                                    tone: .warning,
+                                    actionTitle: "Зрозуміло",
+                                    action: { appState.authErrorMessage = nil }
+                                )
+                            }
                             userCard(currentUser)
                             trustCard(currentUser)
                             employerKycCard(currentUser)
@@ -189,25 +198,18 @@ struct ProfileView: View {
                         .font(.headline)
                         .foregroundStyle(.primary)
                     Spacer()
-                    Text(currentUser.employerKYCStatus.title)
-                        .font(.caption.bold())
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(kycStatusColor(currentUser.employerKYCStatus).opacity(0.2))
-                        .foregroundStyle(kycStatusColor(currentUser.employerKYCStatus))
-                        .clipShape(Capsule())
+                    AppStatusPill(
+                        title: currentUser.employerKYCStatus.title,
+                        tone: kycStatusTone(currentUser.employerKYCStatus)
+                    )
                 }
+
+                kycStatusBanner(for: currentUser.employerKYCStatus, note: currentUser.kycReviewNote)
 
                 TextField("Назва компанії", text: $companyNameDraft)
                     .textFieldStyle(.roundedBorder)
                 TextField("Tax ID", text: $taxIdDraft)
                     .textFieldStyle(.roundedBorder)
-
-                if !currentUser.kycReviewNote.isEmpty {
-                    Text(currentUser.kycReviewNote)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
 
                 HStack(spacing: 8) {
                     Button("Надіслати KYC") {
@@ -235,8 +237,52 @@ struct ProfileView: View {
         }
     }
 
+    private func kycStatusTone(_ status: EmployerKYCStatus) -> AppPillTone {
+        switch status {
+        case .notSubmitted:
+            return .neutral
+        case .pending:
+            return .warning
+        case .verified:
+            return .success
+        case .rejected:
+            return .danger
+        }
+    }
+
+    @ViewBuilder
+    private func kycStatusBanner(for status: EmployerKYCStatus, note: String) -> some View {
+        switch status {
+        case .verified:
+            AppStateBanner(
+                title: "KYC підтверджено",
+                message: note.isEmpty ? "Акаунт роботодавця верифікований." : note,
+                tone: .success
+            )
+        case .pending:
+            AppStateBanner(
+                title: "KYC на розгляді",
+                message: "Модерація перевіряє документи. Це може зайняти кілька годин.",
+                tone: .warning
+            )
+        case .rejected:
+            AppStateBanner(
+                title: "KYC відхилено",
+                message: note.isEmpty ? "Перевірте дані компанії та подайте заявку повторно." : note,
+                tone: .danger
+            )
+        case .notSubmitted:
+            AppStateBanner(
+                title: "KYC не подано",
+                message: "Подайте верифікацію, щоб підвищити довіру та доступ до інструментів модерації.",
+                tone: .neutral
+            )
+        }
+    }
+
     private func riskAppealCard(_ currentUser: AppUser) -> some View {
         let risk = appState.riskScore(for: currentUser.id)
+        let riskLevel = appState.riskLevel(for: currentUser.id)
         let cases = appState
             .moderationCasesForCurrentUser()
             .filter { $0.type == .riskAppeal }
@@ -245,9 +291,21 @@ struct ProfileView: View {
                 .font(.headline)
                 .foregroundStyle(.primary)
 
-            Text("Поточний risk score: \(Int(risk))%")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("Поточний risk score: \(Int(risk))%")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                AppStatusPill(title: riskLevel.title, tone: riskTone(riskLevel))
+            }
+
+            if riskLevel == .high {
+                AppStateBanner(
+                    title: "Високий ризик",
+                    message: "Можуть діяти обмеження на відгуки/дії. Подайте апеляцію для перегляду.",
+                    tone: .danger
+                )
+            }
 
             TextField("Опишіть апеляцію по risk-обмеженню", text: $riskAppealDraft, axis: .vertical)
                 .lineLimit(2...4)
@@ -264,9 +322,12 @@ struct ProfileView: View {
 
             ForEach(cases.prefix(3)) { item in
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(item.status.title): \(item.details)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    HStack {
+                        AppStatusPill(title: item.status.title, tone: moderationStatusTone(item.status))
+                        Text(item.details)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     if !item.resolutionNote.isEmpty {
                         Text(item.resolutionNote)
                             .font(.caption2)
@@ -306,6 +367,7 @@ struct ProfileView: View {
                             Text(item.details)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
+                            AppStatusPill(title: item.status.title, tone: moderationStatusTone(item.status))
 
                             TextField(
                                 "Коментар модератора",
@@ -343,6 +405,30 @@ struct ProfileView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .glassCard()
+        }
+    }
+
+    private func riskTone(_ level: RiskLevel) -> AppPillTone {
+        switch level {
+        case .low:
+            return .success
+        case .medium:
+            return .warning
+        case .high:
+            return .danger
+        }
+    }
+
+    private func moderationStatusTone(_ status: ModerationCaseStatus) -> AppPillTone {
+        switch status {
+        case .open:
+            return .warning
+        case .inReview:
+            return .info
+        case .resolvedApproved:
+            return .success
+        case .resolvedRejected:
+            return .danger
         }
     }
 
@@ -443,13 +529,10 @@ struct ProfileView: View {
                                 .font(.caption.bold())
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            Text(reconciliation.isHealthy ? "OK" : "Mismatch")
-                                .font(.caption2.bold())
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background((reconciliation.isHealthy ? Color.green : Color.red).opacity(0.2))
-                                .foregroundStyle(reconciliation.isHealthy ? .green : .red)
-                                .clipShape(Capsule())
+                            AppStatusPill(
+                                title: reconciliation.isHealthy ? "OK" : "Mismatch",
+                                tone: reconciliation.isHealthy ? .success : .danger
+                            )
                         }
 
                         Text("Ledger: \(reconciliation.expectedAvailable) грн • Wallet: \(reconciliation.actualAvailable) грн")
@@ -458,6 +541,14 @@ struct ProfileView: View {
                         Text("Розбіжність: \(reconciliation.mismatchAmount) грн")
                             .font(.caption2)
                             .foregroundStyle(reconciliation.mismatchAmount == 0 ? Color.secondary : Color.red)
+
+                        if !reconciliation.isHealthy {
+                            AppStateBanner(
+                                title: "Потрібна перевірка фінансового стану",
+                                message: "Запустіть звірку та перевірте останні транзакції. Якщо розбіжність зберігається, зверніться в підтримку.",
+                                tone: .warning
+                            )
+                        }
 
                         Button("Запустити звірку") {
                             _ = appState.runCurrentEmployerReconciliationAudit()
@@ -694,38 +785,19 @@ private struct ProfileProgressBadge: View {
     let status: WorkProgressStatus
 
     var body: some View {
-        Text(status.title)
-            .font(.caption.bold())
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(backgroundColor)
-            .foregroundStyle(textColor)
-            .clipShape(Capsule())
+        AppStatusPill(title: status.title, tone: tone)
     }
 
-    private var backgroundColor: Color {
+    private var tone: AppPillTone {
         switch status {
         case .scheduled:
-            return .blue.opacity(0.2)
+            return .info
         case .inProgress:
-            return .orange.opacity(0.2)
+            return .warning
         case .completed:
-            return .purple.opacity(0.2)
+            return .accent
         case .paid:
-            return .green.opacity(0.2)
-        }
-    }
-
-    private var textColor: Color {
-        switch status {
-        case .scheduled:
-            return .blue
-        case .inProgress:
-            return .orange
-        case .completed:
-            return .purple
-        case .paid:
-            return .green
+            return .success
         }
     }
 }

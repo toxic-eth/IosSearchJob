@@ -17,8 +17,8 @@ php artisan serve
 API base URL: `http://127.0.0.1:8000/api`
 
 ## Demo accounts
-- Worker: `alex@quickgig.app` / `123456`
-- Employer: `cafe@quickgig.app` / `123456`
+- Worker: `380673334455` / `123456`
+- Employer: `380671112233` / `123456`
 
 ## Endpoints
 ### Public
@@ -41,5 +41,5 @@ API base URL: `http://127.0.0.1:8000/api`
 ```bash
 curl -X POST http://127.0.0.1:8000/api/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"alex@quickgig.app","password":"123456"}'
+  -d '{"phone":"380673334455","password":"123456"}'
 ```

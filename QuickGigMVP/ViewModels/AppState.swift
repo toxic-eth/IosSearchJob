@@ -29,10 +29,14 @@ final class AppState: ObservableObject {
     private let moderationActionsStorageKey = "quickgig.moderation.actions.v1"
     private let auditEventsStorageKey = "quickgig.audit.events.v1"
     private let verificationCooldownSeconds = 60
+    private let authSessionServiceKey = "com.quickgig.mvp.auth"
     private var slaTimerCancellable: AnyCancellable?
     private var reminderTimestamps: [UUID: Date] = [:]
     private var lastNotificationTimestampsByKey: [String: Date] = [:]
     private var activePhoneVerificationCode: String?
+    private var backendAccessToken: String?
+    private lazy var authAPIClient = AuthAPIClient()
+    private lazy var authSessionStore = AuthSessionStore(service: authSessionServiceKey)
     private let demoShiftTargetCount = 50
     private let demoCityCoordinates: [CLLocationCoordinate2D] = [
         CLLocationCoordinate2D(latitude: 50.4501, longitude: 30.5234), // Київ
@@ -63,6 +67,7 @@ final class AppState: ObservableObject {
     @Published var auditEvents: [AuditEvent] = []
     @Published var blockedConversationPairs: Set<String> = []
     @Published var authErrorMessage: String?
+    @Published private(set) var isAuthInFlight = false
     @Published private(set) var shouldRequestLocationPermission = false
     @Published private(set) var phoneVerificationMaskedPhone = ""
     @Published private(set) var phoneVerificationDemoCode = ""
@@ -76,6 +81,7 @@ final class AppState: ObservableObject {
             seedData()
             persistAuthState()
         }
+        backendAccessToken = authSessionStore.loadToken()
         loadWalletState()
         loadModerationState()
         loadModerationActionsState()
@@ -86,6 +92,9 @@ final class AppState: ObservableObject {
         recalculateReliabilityForAll()
         NotificationService.requestAuthorizationIfNeeded()
         startSLATimer()
+        Task {
+            await restoreSessionFromBackendIfNeeded()
+        }
     }
 
     var isLoggedIn: Bool {
@@ -457,6 +466,120 @@ final class AppState: ObservableObject {
         return true
     }
 
+    @MainActor
+    func registerWithBackend(name: String, phone: String, password: String, role: UserRole) async -> Bool {
+        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedPhone = normalizePhone(phone)
+
+        guard !normalizedName.isEmpty else {
+            authErrorMessage = "Введіть ім'я або назву компанії"
+            return false
+        }
+        guard isValidPhone(normalizedPhone) else {
+            authErrorMessage = "Номер має починатися з 380 і містити 12 цифр"
+            return false
+        }
+        guard password.count >= 6 else {
+            authErrorMessage = "Пароль має містити щонайменше 6 символів"
+            return false
+        }
+
+        isAuthInFlight = true
+        defer { isAuthInFlight = false }
+
+        do {
+            let response = try await authAPIClient.register(
+                name: normalizedName,
+                phone: normalizedPhone,
+                password: password,
+                role: role
+            )
+
+            guard let backendRole = UserRole(rawValue: response.user.role), backendRole == role else {
+                authErrorMessage = "Помилка ролі акаунту. Спробуйте ще раз"
+                return false
+            }
+
+            let user = upsertLocalUserFromBackend(response.user, fallbackPassword: password)
+            currentUser = user
+            backendAccessToken = response.token
+            authSessionStore.save(token: response.token)
+
+            if role == .employer {
+                walletBalances[user.id] = walletBalances[user.id] ?? employerInitialDemoBalance
+            }
+
+            recordAuditEvent(
+                userId: user.id,
+                actorUserId: user.id,
+                type: .auth,
+                title: "Registration",
+                message: "Створено акаунт через backend (\(role.title))",
+                relatedId: user.id
+            )
+            shouldRequestLocationPermission = true
+            authErrorMessage = nil
+            beginPhoneVerificationIfNeeded()
+            persistAuthState()
+            persistWalletState()
+            persistAuditState()
+            return true
+        } catch {
+            authErrorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    @MainActor
+    func loginWithBackend(phone: String, password: String, expectedRole: UserRole? = nil) async -> Bool {
+        let normalizedPhone = normalizePhone(phone)
+        guard isValidPhone(normalizedPhone) else {
+            authErrorMessage = "Номер має починатися з 380 і містити 12 цифр"
+            return false
+        }
+
+        isAuthInFlight = true
+        defer { isAuthInFlight = false }
+
+        do {
+            let response = try await authAPIClient.login(phone: normalizedPhone, password: password)
+            guard let backendRole = UserRole(rawValue: response.user.role) else {
+                authErrorMessage = "Сервер повернув невідому роль користувача"
+                return false
+            }
+
+            if let expectedRole, backendRole != expectedRole {
+                authErrorMessage = expectedRole == .worker
+                    ? "Цей акаунт зареєстровано як роботодавець"
+                    : "Цей акаунт зареєстровано як працівник"
+                return false
+            }
+
+            let user = upsertLocalUserFromBackend(response.user, fallbackPassword: password)
+            currentUser = user
+            backendAccessToken = response.token
+            authSessionStore.save(token: response.token)
+
+            recordAuditEvent(
+                userId: user.id,
+                actorUserId: user.id,
+                type: .auth,
+                title: "Login",
+                message: "Успішний вхід через backend",
+                relatedId: user.id
+            )
+            shouldRequestLocationPermission = false
+            authErrorMessage = nil
+            beginPhoneVerificationIfNeeded()
+            persistAuthState()
+            persistAuditState()
+            return true
+        } catch {
+            authErrorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     func register(name: String, phone: String, password: String, role: UserRole) -> Bool {
         let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedPhone = normalizePhone(phone)
@@ -825,6 +948,14 @@ final class AppState: ObservableObject {
     }
 
     func logout() {
+        if let token = backendAccessToken {
+            Task {
+                try? await authAPIClient.logout(token: token)
+            }
+        }
+        backendAccessToken = nil
+        authSessionStore.clear()
+
         if let currentUser {
             recordAuditEvent(
                 userId: currentUser.id,
@@ -840,6 +971,76 @@ final class AppState: ObservableObject {
         resetPhoneVerificationSession()
         persistAuthState()
         persistAuditState()
+    }
+
+    @MainActor
+    private func restoreSessionFromBackendIfNeeded() async {
+        guard let token = backendAccessToken, !token.isEmpty else { return }
+        guard !isAuthInFlight else { return }
+        isAuthInFlight = true
+        defer { isAuthInFlight = false }
+
+        do {
+            let response = try await authAPIClient.me(token: token)
+            let user = upsertLocalUserFromBackend(response.user, fallbackPassword: nil)
+            currentUser = user
+            authErrorMessage = nil
+            persistAuthState()
+        } catch {
+            backendAccessToken = nil
+            authSessionStore.clear()
+        }
+    }
+
+    private func upsertLocalUserFromBackend(_ apiUser: APIAuthUser, fallbackPassword: String?) -> AppUser {
+        let backendRole = UserRole(rawValue: apiUser.role) ?? .worker
+
+        if let index = users.firstIndex(where: { $0.phone == apiUser.phone }) {
+            users[index].name = apiUser.name
+            users[index].email = apiUser.email ?? users[index].email
+            users[index].role = backendRole
+            users[index].isEmailVerified = !(apiUser.email ?? "").isEmpty
+            users[index].isPhoneVerified = true
+            if let rating = apiUser.rating {
+                users[index].rating = rating
+            }
+            if let reviewsCount = apiUser.reviewsCount {
+                users[index].reviewsCount = reviewsCount
+            }
+            if let fallbackPassword, !fallbackPassword.isEmpty {
+                users[index].password = fallbackPassword
+            }
+            return users[index]
+        }
+
+        let created = AppUser(
+            id: UUID(),
+            name: apiUser.name,
+            phone: apiUser.phone,
+            isPhoneVerified: true,
+            email: apiUser.email ?? "",
+            isEmailVerified: !(apiUser.email ?? "").isEmpty,
+            password: fallbackPassword ?? "",
+            role: backendRole,
+            resumeSummary: "",
+            isVerifiedEmployer: backendRole == .employer,
+            rating: apiUser.rating ?? 0,
+            reviewsCount: apiUser.reviewsCount ?? 0,
+            reliabilityScore: 0,
+            completionRate: 0,
+            cancelRate: 0,
+            noShowRate: 0,
+            employerKYCStatus: .notSubmitted,
+            employerCompanyName: "",
+            employerTaxId: "",
+            kycReviewNote: "",
+            moderationRole: .none
+        )
+        users.append(created)
+        if backendRole == .employer {
+            walletBalances[created.id] = walletBalances[created.id] ?? employerInitialDemoBalance
+        }
+        return created
     }
 
     func addShift(title: String, details: String, address: String, pay: Int, startDate: Date, endDate: Date, coordinate: CLLocationCoordinate2D, workFormat: WorkFormat, requiredWorkers: Int) {

@@ -730,6 +730,23 @@ struct CommunicationHubView: View {
     @EnvironmentObject private var appState: AppState
     @State private var selectedChat: ChatTarget?
 
+    private var currentRole: UserRole? {
+        appState.currentUser?.role
+    }
+
+    private var conversations: [ShiftConversation] {
+        appState.conversationsForCurrentUser()
+    }
+
+    private var unreadTotal: Int {
+        conversations.reduce(0) { $0 + appState.unreadMessagesCount(in: $1.id) }
+    }
+
+    private var pendingOffers: Int {
+        guard let currentUser = appState.currentUser else { return 0 }
+        return appState.dealOffers.filter { $0.toUserId == currentUser.id && $0.status == .pending }.count
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -737,11 +754,13 @@ struct CommunicationHubView: View {
 
                 ScrollView {
                     VStack(spacing: 12) {
-                        ForEach(appState.conversationsForCurrentUser()) { conversation in
+                        summaryCard
+
+                        ForEach(conversations) { conversation in
                             conversationRow(conversation)
                         }
-                        if appState.conversationsForCurrentUser().isEmpty {
-                            Text("Ще немає діалогів. Відкрийте чат зі сторінки активностей.")
+                        if conversations.isEmpty {
+                            Text(emptyHint)
                                 .foregroundStyle(.secondary)
                                 .padding(.top, 40)
                         }
@@ -749,12 +768,43 @@ struct CommunicationHubView: View {
                     .padding(16)
                 }
             }
-            .navigationTitle("Чати")
+            .navigationTitle(currentRole == .employer ? "Операційні чати" : "Чати змін")
             .sheet(item: $selectedChat) { target in
                 ConversationRoomSheet(target: target)
                     .environmentObject(appState)
             }
         }
+    }
+
+    private var emptyHint: String {
+        if currentRole == .employer {
+            return "Ще немає діалогів. Відкрийте вакансію та прийміть відгук, щоб почати комунікацію."
+        }
+        return "Ще немає діалогів. Відгукніться на зміну або відкрийте чат зі сторінки активностей."
+    }
+
+    private var summaryCard: some View {
+        HStack(spacing: 8) {
+            metricTile(title: "Діалоги", value: "\(conversations.count)", tone: .info)
+            metricTile(title: "Непрочитані", value: "\(unreadTotal)", tone: unreadTotal == 0 ? .neutral : .warning)
+            metricTile(title: "Офери", value: "\(pendingOffers)", tone: pendingOffers == 0 ? .neutral : .accent)
+        }
+        .glassCard()
+    }
+
+    private func metricTile(title: String, value: String, tone: AppPillTone) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(value)
+                .font(.title3.bold())
+                .foregroundStyle(tone.fg)
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color.primary.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     private func conversationRow(_ conversation: ShiftConversation) -> some View {
@@ -777,7 +827,7 @@ struct CommunicationHubView: View {
                         Text(counterpart?.name ?? "Користувач")
                             .font(.headline)
                             .foregroundStyle(.primary)
-                        Text(shift?.title ?? "Зміна")
+                        Text("\(shift?.title ?? "Зміна") • \(counterpart?.role == .worker ? "Працівник" : "Роботодавець")")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -1034,34 +1084,17 @@ private struct ActivityStatusBadge: View {
     let status: ApplicationStatus
 
     var body: some View {
-        Text(status.title)
-            .font(.caption.bold())
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(backgroundColor)
-            .foregroundStyle(textColor)
-            .clipShape(Capsule())
+        AppStatusPill(title: status.title, tone: tone)
     }
 
-    private var backgroundColor: Color {
+    private var tone: AppPillTone {
         switch status {
         case .pending:
-            return .orange.opacity(0.2)
+            return .warning
         case .accepted:
-            return .green.opacity(0.2)
+            return .success
         case .rejected:
-            return .red.opacity(0.2)
-        }
-    }
-
-    private var textColor: Color {
-        switch status {
-        case .pending:
-            return .orange
-        case .accepted:
-            return .green
-        case .rejected:
-            return .red
+            return .danger
         }
     }
 }
@@ -1070,38 +1103,19 @@ private struct ActivityProgressBadge: View {
     let status: WorkProgressStatus
 
     var body: some View {
-        Text(status.title)
-            .font(.caption.bold())
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(backgroundColor)
-            .foregroundStyle(textColor)
-            .clipShape(Capsule())
+        AppStatusPill(title: status.title, tone: tone)
     }
 
-    private var backgroundColor: Color {
+    private var tone: AppPillTone {
         switch status {
         case .scheduled:
-            return .blue.opacity(0.2)
+            return .info
         case .inProgress:
-            return .orange.opacity(0.2)
+            return .warning
         case .completed:
-            return .purple.opacity(0.2)
+            return .accent
         case .paid:
-            return .green.opacity(0.2)
-        }
-    }
-
-    private var textColor: Color {
-        switch status {
-        case .scheduled:
-            return .blue
-        case .inProgress:
-            return .orange
-        case .completed:
-            return .purple
-        case .paid:
-            return .green
+            return .success
         }
     }
 }
@@ -1110,34 +1124,17 @@ private struct DisputeStatusBadge: View {
     let status: ShiftDisputeStatus
 
     var body: some View {
-        Text(status.title)
-            .font(.caption.bold())
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(backgroundColor)
-            .foregroundStyle(textColor)
-            .clipShape(Capsule())
+        AppStatusPill(title: status.title, tone: tone)
     }
 
-    private var backgroundColor: Color {
+    private var tone: AppPillTone {
         switch status {
         case .open:
-            return .orange.opacity(0.2)
+            return .warning
         case .inReview:
-            return .blue.opacity(0.2)
+            return .info
         case .resolvedForWorker, .resolvedForEmployer:
-            return .green.opacity(0.2)
-        }
-    }
-
-    private var textColor: Color {
-        switch status {
-        case .open:
-            return .orange
-        case .inReview:
-            return .blue
-        case .resolvedForWorker, .resolvedForEmployer:
-            return .green
+            return .success
         }
     }
 }
@@ -1146,42 +1143,21 @@ private struct PayoutStatusBadge: View {
     let status: PayoutStatus
 
     var body: some View {
-        Text(status.title)
-            .font(.caption.bold())
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(backgroundColor)
-            .foregroundStyle(textColor)
-            .clipShape(Capsule())
+        AppStatusPill(title: status.title, tone: tone)
     }
 
-    private var backgroundColor: Color {
+    private var tone: AppPillTone {
         switch status {
         case .reserved:
-            return .blue.opacity(0.2)
+            return .info
         case .onHold:
-            return .orange.opacity(0.2)
+            return .warning
         case .pendingRelease:
-            return .purple.opacity(0.2)
+            return .accent
         case .paid:
-            return .green.opacity(0.2)
+            return .success
         case .canceled:
-            return .red.opacity(0.2)
-        }
-    }
-
-    private var textColor: Color {
-        switch status {
-        case .reserved:
-            return .blue
-        case .onHold:
-            return .orange
-        case .pendingRelease:
-            return .purple
-        case .paid:
-            return .green
-        case .canceled:
-            return .red
+            return .danger
         }
     }
 }

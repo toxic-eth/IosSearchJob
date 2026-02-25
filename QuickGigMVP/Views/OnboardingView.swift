@@ -41,7 +41,7 @@ struct OnboardingView: View {
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [Color.black.opacity(0.95), Color.purple.opacity(0.72), Color.indigo.opacity(0.6)],
+                colors: [Color.black.opacity(0.92), Color.purple.opacity(0.58), Color.indigo.opacity(0.45)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -54,6 +54,7 @@ struct OnboardingView: View {
                         onSkip()
                     }
                     .foregroundStyle(.white.opacity(0.85))
+                    .accessibilityLabel("Пропустити ознайомлення")
                 }
                 .padding(.horizontal, 20)
 
@@ -95,6 +96,7 @@ struct OnboardingView: View {
                         .background(.white)
                         .foregroundStyle(.black)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .accessibilityLabel("Наступний слайд")
                     } else {
                         Text(I18n.t("onb.pick_role", language))
                             .font(.system(size: 14, weight: .semibold, design: .rounded))
@@ -133,7 +135,7 @@ struct OnboardingView: View {
                 .foregroundStyle(.white)
 
             Text(I18n.t(page.subtitle, language))
-                .font(.system(size: 20, weight: .medium, design: .serif))
+                .font(.system(size: 19, weight: .medium, design: .rounded))
                 .foregroundStyle(.white.opacity(0.9))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -164,7 +166,7 @@ struct OnboardingView: View {
                 .foregroundStyle(.white)
 
             Text(I18n.t("onb.role_sub", language))
-                .font(.system(size: 19, weight: .medium, design: .serif))
+                .font(.system(size: 18, weight: .medium, design: .rounded))
                 .foregroundStyle(.white.opacity(0.9))
 
             roleActionButton(
@@ -200,5 +202,7 @@ struct OnboardingView: View {
                 .shadow(color: .black.opacity(0.28), radius: 12, x: 0, y: 6)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityHint("Вибрати роль для реєстрації")
     }
 }
